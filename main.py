@@ -71,12 +71,14 @@ for d in data:
 
 l1 = NeurNFN.DenseLayer(10,'leaky_relu', 0.3)
 l2 = NeurNFN.DenseLayer(20,'leaky_relu', 0.3)
+ld2 = NeurNFN.LayerNormalization()
 l3 = NeurNFN.DenseLayer(10,'leaky_relu', 0.3)
 l4 = NeurNFN.DenseLayer(3,'softmax')
-lay = [l1,l2,l3,l4]
+#Aktywacja PO LayerNormalization!
+lay = [l1,l2,ld2,l3,l4]
 m = NeurNFN.Model(4, lay)
 m.Compile()
-m.Train(dataTrain,epochs = 300, learning_rate = 0.006)
+m.Train(dataTrain,epochs = 1000, learning_rate = 0.07)
 
 '''
 l1_2 = NeurNFN.DenseLayer(12,'sigmoid')
@@ -95,7 +97,7 @@ for d in dataTest:
     real = d[1]
     print(irises_res[np.argmax(real)], ":", irises_res[np.argmax(predictions)], ":" , round(BladPredykcji(predictions,real)[0],2))
     
-  '''
+'''
 for d in dataTest:
     predictions = m2.Forward(d[0])
     real = d[1]
