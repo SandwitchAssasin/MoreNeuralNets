@@ -64,13 +64,16 @@ def SoftmaxDer(X):
     S = Softmax(X)*(np.ones(shape=X.shape)- Softmax(X))
     return S 
 class DenseLayer:
-    def __init__(self, input_size, output_size, activation, optional_alpha = 0):
-        self.input_size = input_size
-        self.output_size = output_size
-        self.weights = np.random.randn(output_size,input_size)
-        self.biases = np.random.randn(output_size,1)
+    def __init__(self, size, activation, optional_alpha = 0):
+        self.output_size = size
         self.activation = activation
         self.optional_alpha = optional_alpha
+        
+    def Compile(self, input_size):
+        self.input_size = input_size
+        self.weights = np.random.randn(self.output_size,self.input_size)
+        self.biases = np.random.randn(self.output_size,1)
+
     def Forward(self, inputs):
         self.remInputs = inputs
         '''
@@ -90,32 +93,32 @@ class DenseLayer:
             case 'softmax':
                 self.Y = Softmax(self.S)
         return self.Y
-    def Backward(self, last_delta, last_weights, is_last_layer):
-        if is_last_layer:
-            match self.activation:
-                case 'sigmoid':
-                    derv = SigmoidDer(self.S)
-                case 'relu':
-                    derv = ReLUDer(self.S)
-                case 'leaky_relu':
-                    derv = LeakyReLUDer(self.S, self.optional_alpha)
-                case 'softmax':
-                    derv = SoftmaxDer(self.S)
-            self.delta = derv * last_delta
-        else:
-            match self.activation:
-                case 'sigmoid':
-                    derv = SigmoidDer(self.S)
-                case 'relu':
-                    derv = ReLUDer(self.S)
-                    
-                case 'leaky_relu':
-                    derv = LeakyReLUDer(self.S, self.optional_alpha)
-                case 'softmax':
-                    derv = SoftmaxDer(self.S)
-            wage_l_delta_prod = last_weights.T @ last_delta
-            self.delta = derv * wage_l_delta_prod
-            #print(self.delta)
+    def SetLastDelta_Backward(self, error_delta):
+        #This is [n-1] layer
+        match self.activation:
+            case 'sigmoid':
+                derv = SigmoidDer(self.S)
+            case 'relu':
+                derv = ReLUDer(self.S)
+            case 'leaky_relu':
+                derv = LeakyReLUDer(self.S, self.optional_alpha)
+            case 'softmax':
+                derv = SoftmaxDer(self.S)
+        self.delta = derv * error_delta #The delta of the this layer 
+    def Backward(self, next_inputs, optional_alpha = 0):
+        #This is [k] layer. Next_inputs must be S, not Y
+        match self.activation:
+            case 'sigmoid':
+                derv = SigmoidDer(next_inputs)
+            case 'relu':
+                derv = ReLUDer(next_inputs)                  
+            case 'leaky_relu':
+                derv = LeakyReLUDer(next_inputs, optional_alpha)
+            case 'softmax':
+                derv = SoftmaxDer(next_inputs)
+        wage_l_delta_prod = self.weights.T @ self.delta
+        next_delta = derv * wage_l_delta_prod #The delta of [k-1] layer
+        return next_delta
     def Learn(self, learning_rate):
         if self.delta is None:
             raise Exception("THERE IS NO DELTA! Throw Backward before Learn")
@@ -155,13 +158,25 @@ class LayerNormalization:
             self.weights = wT.T
             self.biases = self.biases - learning_rate*self.delta
 class Model:
-    def __init__(self, layers):
-        self.input_size = layers[0].input_size
+    def __init__(self, input_size, layers):
+        self.input_size = input_size
         self.size = len(layers)
         self.layers = layers
+        self.layer_outputSizes = [l.output_size for l in layers]
         self.error = 0
+        self.isCompiled = False
+    def Compile(self):
+        print(self.layer_outputSizes)
+        for i in range(0, self.size):
+            if i == 0:
+                self.layers[i].Compile(self.input_size)
+            else:
+                self.layers[i].Compile(self.layers[i-1].output_size)
+        self.isCompiled = True
     def Forward(self, inputs):
         '''Inputs->outputs'''
+        if(not self.isCompiled):
+            raise Exception('Compile the model before using it!')
         input_data = np.expand_dims(np.array(inputs),0)
         if len(input_data[0]) != self.input_size:
             raise Exception("Wrong input size!")
@@ -171,7 +186,8 @@ class Model:
         return x
     def Backward(self, inputs, real_values):
         '''Calculating deltas and error'''
-        #first delta - the 1D matrix containing all first derivtives of target function via model-output values
+        if(not self.isCompiled):
+            raise Exception('Compile the model before using it!')
         predictions = self.Forward(inputs)
     
         #Error-----------------------------------
@@ -180,23 +196,26 @@ class Model:
         #er_delta = 2*(predictions - real_values.T) 
         
         self.error = math.sqrt(np.sum((predictions - real_values.T)*(predictions - real_values.T)))
-
+        
         #Categorical cross-entropy WITH SOFTMAX ON LAST LAYER
         if(self.layers[-1].activation != 'softmax'):
             raise Exception('You are using cat. cross-entropy with no softmax on the last layer. USE SOFTMAX PLEASE')
-        er_delta = predictions - real_values.T
-
-        self.layers[self.size-1].Backward(er_delta, None, is_last_layer = True)
-        delta = self.layers[self.size-1].delta
-        for i in range(self.size-2, -1,-1):
-            self.layers[i].Backward(delta, self.layers[i+1].weights, is_last_layer = False)
-            delta = self.layers[i].delta
+        er_delta = predictions - real_values.T #Error delta
+        
+        self.layers[self.size-1].SetLastDelta_Backward(er_delta)
+        for i in range(self.size-1, 0,-1):
+            if isinstance(self.layers[i], DenseLayer):
+                self.layers[i-1].delta = self.layers[i].Backward(self.layers[i-1].S, self.layers[i-1].optional_alpha)
     def Learn(self, learning_rate):
         '''Using deltas to learn the net'''
+        if(not self.isCompiled):
+            raise Exception('Compile the model before using it!')
         for i in range(0, self.size):
             self.layers[i].Learn(learning_rate)
     def Train(self, data_base, epochs, learning_rate):
         '''Actual train function'''
+        if(not self.isCompiled):
+            raise Exception('Compile the model before using it!')
         for i in range(epochs):
             cum_error = 0
             for data in data_base:
