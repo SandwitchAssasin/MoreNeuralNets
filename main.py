@@ -69,37 +69,25 @@ for d in data:
     else:
         dataTest.append(d)
 
-l1 = NeurNFN.DenseLayer(10,'leaky_relu', 0.3)
-l2 = NeurNFN.DenseLayer(20,'leaky_relu', 0.3)
+l1_2 = NeurNFN.DenseLayer(12,'linear')
+ld1 = NeurNFN.LayerNormalization()
+ld21 = NeurNFN.ReLU_L()
+l2_2 = NeurNFN.DenseLayer(40,'linear')
 ld2 = NeurNFN.LayerNormalization()
-l3 = NeurNFN.DenseLayer(10,'leaky_relu', 0.3)
-l4 = NeurNFN.DenseLayer(3,'softmax')
-#Aktywacja PO LayerNormalization!
-lay = [l1,l2,ld2,l3,l4]
-m = NeurNFN.Model(4, lay)
-m.Compile()
-m.Train(dataTrain,epochs = 1000, learning_rate = 0.07)
-
-'''
-l1_2 = NeurNFN.DenseLayer(12,'sigmoid')
-l2_2 = NeurNFN.DenseLayer(40,'sigmoid')
-l3_2 = NeurNFN.DenseLayer(12,'sigmoid')
-l4_2 = NeurNFN.DenseLayer(3,'sigmoid')
-lay = [l1_2,l2_2,l3_2,l4_2]
+ld22 = NeurNFN.ReLU_L()
+l3_2 = NeurNFN.DenseLayer(40,'linear')
+ld3 = NeurNFN.LayerNormalization()
+ld23 = NeurNFN.ReLU_L()
+l4_2 = NeurNFN.DenseLayer(3,'softmax')
+lay = [l1_2,ld1,ld21,l2_2,ld2,ld22,l3_2,ld3,ld23,l4_2]
 m2 = NeurNFN.Model(4, lay)
 m2.Compile()
 
-m2.Train(dataTrain,epochs = 500, learning_rate = 0.03)
-'''
+m2.Train(dataTrain,epochs = 1200, learning_rate = 0.003)
 
-for d in dataTest:
-    predictions = m.Forward(d[0])
-    real = d[1]
-    print(irises_res[np.argmax(real)], ":", irises_res[np.argmax(predictions)], ":" , round(BladPredykcji(predictions,real)[0],2))
-    
-'''
+
+
 for d in dataTest:
     predictions = m2.Forward(d[0])
     real = d[1]
     print(irises_res[np.argmax(real)], ":", irises_res[np.argmax(predictions)], ":" , round(BladPredykcji(predictions,real)[0],2))
- '''

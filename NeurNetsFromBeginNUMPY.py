@@ -68,6 +68,7 @@ class DenseLayer:
         self.output_size = size
         self.activation = activation
         self.optional_alpha = optional_alpha
+        self.isTrainable = True
         
     def Compile(self, input_size):
         self.input_size = input_size
@@ -135,14 +136,12 @@ class DenseLayer:
             self.biases = self.biases - learning_rate*self.delta
 class LayerNormalization:
     def __init__(self):
-        pass
+        self.isTrainable = True
     def Compile(self, input_size):
         self.size = input_size
         self.output_size = self.size #The same as size, just different names
         self.gammas = np.random.randn(input_size,1)
         self.biases = np.random.randn(input_size,1)
-        self.activation = 'linear'
-        self.optional_alpha = 0
         self.S = None
 
     def Forward(self, inputs):
@@ -155,15 +154,21 @@ class LayerNormalization:
        
         return self.outputs
     def SetLastDelta_Backward(self, error_delta):
-        #This is [n-1] layer
-        self.delta = error_delta #The delta of the this layer 
+        self.delta = error_delta 
     def Backward(self):
+        '''
         gamma_squared_vec = self.gammas*(self.remInputs-self.mean)*(self.remInputs-self.mean)
         other_side_of_der = (1 - 1/self.size)*(2/self.size)*(-1/(2*(math.sqrt(self.var + self.epsilon)**3)))
         y_on_x_der = gamma_squared_vec * other_side_of_der
         next_delta = self.delta * y_on_x_der
+        '''
+        #s = sqrt(var + epsilon), scalar
+        reversed_s = 1/math.sqrt(self.var + self.epsilon)
+        gradient_of_error_with_respect_to_normalized_x = self.delta * self.gammas
+        m_of_g_of_e_to_n_x = np.mean(gradient_of_error_with_respect_to_normalized_x) #mean of the above gradient
+        m_of_g_of_multi = np.mean(gradient_of_error_with_respect_to_normalized_x * self.outputs) #It's self-explanatory
+        next_delta = reversed_s*(gradient_of_error_with_respect_to_normalized_x - m_of_g_of_e_to_n_x - self.outputs * m_of_g_of_multi)
         return next_delta
-        #TUTAJ SKONCZYLEM
     def Learn(self, learning_rate):
         if self.delta is None:
             raise Exception("THERE IS NO DELTA! Use Backward before Learn")
@@ -171,6 +176,61 @@ class LayerNormalization:
             delta_gammas = self.delta * (self.remInputs - self.mean)/math.sqrt(self.var + self.epsilon)
             self.gammas = self.gammas - learning_rate*delta_gammas
             self.biases = self.biases - learning_rate*self.delta
+class Sigmoid_L:
+    def __init__(self):
+        self.isTrainable = False
+    def Compile(self, input_size):
+        self.size = input_size
+        self.output_size = self.size #The same as size, just different names
+        self.S = None
+    def Forward(self, inputs):
+        self.remInputs = inputs
+        self.outputs = Sigmoid(inputs)
+        self.S = self.outputs
+        #print(self.outputs)
+        return self.outputs
+    def SetLastDelta_Backward(self, error_delta):
+        self.delta = error_delta 
+    def Backward(self):
+        next_delta = self.delta * SigmoidDer(self.remInputs)
+        return next_delta
+class ReLU_L:
+    def __init__(self):
+        self.isTrainable = False
+    def Compile(self, input_size):
+        self.size = input_size
+        self.output_size = self.size #The same as size, just different names
+        self.S = None
+    def Forward(self, inputs):
+        self.remInputs = inputs
+        self.outputs = ReLU(inputs)
+        self.S = self.outputs
+        #print(self.outputs)
+        return self.outputs
+    def SetLastDelta_Backward(self, error_delta):
+        self.delta = error_delta 
+    def Backward(self):
+        next_delta = self.delta * ReLUDer(self.remInputs)
+        return next_delta
+class LeakyReLU_L:
+    def __init__(self, alpha):
+        self.isTrainable = False
+        self.alpha = alpha
+    def Compile(self, input_size):
+        self.size = input_size
+        self.output_size = self.size #The same as size, just different names
+        self.S = None
+    def Forward(self, inputs):
+        self.remInputs = inputs
+        self.outputs = LeakyReLU(inputs, self.alpha)
+        self.S = self.outputs
+        #print(self.outputs)
+        return self.outputs
+    def SetLastDelta_Backward(self, error_delta):
+        self.delta = error_delta 
+    def Backward(self):
+        next_delta = self.delta * LeakyReLUDer(self.remInputs, self.alpha)
+        return next_delta
 class Model:
     def __init__(self, input_size, layers):
         self.input_size = input_size
@@ -225,15 +285,28 @@ class Model:
         self.layers[self.size-1].SetLastDelta_Backward(er_delta)
         for i in range(self.size-1, 0,-1):
             if isinstance(self.layers[i], DenseLayer):
-                self.layers[i-1].delta = self.layers[i].Backward(self.layers[i-1].S, self.layers[i-1].activation, self.layers[i-1].optional_alpha)
+                try:
+                    self.layers[i-1].delta = self.layers[i].Backward(self.layers[i-1].S, self.layers[i-1].activation, self.layers[i-1].optional_alpha)
+                except AttributeError:
+                    try:
+                        self.layers[i-1].delta = self.layers[i].Backward(self.layers[i-1].S, 'linear', self.layers[i-1].optional_alpha)
+                    except AttributeError:
+                        self.layers[i-1].delta = self.layers[i].Backward(self.layers[i-1].S, 'linear', 0)
             if isinstance(self.layers[i], LayerNormalization):
+                self.layers[i-1].delta = self.layers[i].Backward()
+            if isinstance(self.layers[i], Sigmoid_L):
+                self.layers[i-1].delta = self.layers[i].Backward()
+            if isinstance(self.layers[i], ReLU_L):
+                self.layers[i-1].delta = self.layers[i].Backward()
+            if isinstance(self.layers[i], LeakyReLU_L):
                 self.layers[i-1].delta = self.layers[i].Backward()
     def Learn(self, learning_rate):
         '''Using deltas to learn the net'''
         if(not self.isCompiled):
             raise Exception('Compile the model before using it!')
         for i in range(0, self.size):
-            self.layers[i].Learn(learning_rate)
+            if self.layers[i].isTrainable:
+                self.layers[i].Learn(learning_rate)
     def Train(self, data_base, epochs, learning_rate):
         '''Actual train function'''
         if(not self.isCompiled):
