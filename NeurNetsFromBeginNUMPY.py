@@ -1,6 +1,7 @@
 import numpy as np
 import math
 import matplotlib.pyplot as plt
+import copy
 #BOTH FUNCTIONS ONLY FOR VERTICAL MATRICES
 def Sigmoid(X):
     S = np.zeros(shape=X.shape)
@@ -156,12 +157,53 @@ class LayerNormalization:
     def SetLastDelta_Backward(self, error_delta):
         self.delta = error_delta 
     def Backward(self):
-        '''
-        gamma_squared_vec = self.gammas*(self.remInputs-self.mean)*(self.remInputs-self.mean)
-        other_side_of_der = (1 - 1/self.size)*(2/self.size)*(-1/(2*(math.sqrt(self.var + self.epsilon)**3)))
-        y_on_x_der = gamma_squared_vec * other_side_of_der
-        next_delta = self.delta * y_on_x_der
-        '''
+        #s = sqrt(var + epsilon), scalar
+        reversed_s = 1/math.sqrt(self.var + self.epsilon)
+        gradient_of_error_with_respect_to_normalized_x = self.delta * self.gammas
+        m_of_g_of_e_to_n_x = np.mean(gradient_of_error_with_respect_to_normalized_x) #mean of the above gradient
+        m_of_g_of_multi = np.mean(gradient_of_error_with_respect_to_normalized_x * self.outputs) #It's self-explanatory
+        next_delta = reversed_s*(gradient_of_error_with_respect_to_normalized_x - m_of_g_of_e_to_n_x - self.outputs * m_of_g_of_multi)
+        return next_delta
+    def Learn(self, learning_rate):
+        if self.delta is None:
+            raise Exception("THERE IS NO DELTA! Use Backward before Learn")
+        else:
+            delta_gammas = self.delta * (self.remInputs - self.mean)/math.sqrt(self.var + self.epsilon)
+            self.gammas = self.gammas - learning_rate*delta_gammas
+            self.biases = self.biases - learning_rate*self.delta
+class BatchNormalization:
+    #Trzeba zrobic!!
+    def __init__(self):
+        self.isTrainable = True
+        self.batch_size = 0
+    def Compile(self, input_size):
+        self.size = input_size
+        self.output_size = self.size #The same as size, just different names
+        self.gammas = np.random.randn(input_size,1)
+        self.biases = np.random.randn(input_size,1)
+        self.running_means = np.zeros((self.size,1))
+        self.running_vars = np.zeros((self.size,1))
+        self.counter = 0
+        self.momentum = 0.9
+        self.S = None
+        self.remInputs = []
+
+    def Forward(self, inputs):
+        self.remInputs.append(inputs)
+        self.epsilon = 0.00001
+        self.outputs = (inputs - self.running_means)/math.sqrt(self.running_vars + self.epsilon)
+        self.S = self.outputs
+
+        counter = counter + 1
+        if counter >= self.batch_size:
+            self.running_means = np.sum(inputs)/self.size
+            self.var = (np.sum((inputs - self.mean)*(inputs - self.mean)))/self.size
+            counter = 0
+       
+        return self.outputs
+    def SetLastDelta_Backward(self, error_delta):
+        self.delta = error_delta 
+    def Backward(self):
         #s = sqrt(var + epsilon), scalar
         reversed_s = 1/math.sqrt(self.var + self.epsilon)
         gradient_of_error_with_respect_to_normalized_x = self.delta * self.gammas
@@ -232,13 +274,14 @@ class LeakyReLU_L:
         next_delta = self.delta * LeakyReLUDer(self.remInputs, self.alpha)
         return next_delta
 class Model:
-    def __init__(self, input_size, layers):
+    def __init__(self, input_size, layers, batch_size = 1):
         self.input_size = input_size
         self.size = len(layers)
         self.layers = layers
         self.error = 0
         self.isCompiled = False
         self.layer_outputSizes = []
+        self.batch_size = batch_size    
     def Compile(self):
         print(self.layer_outputSizes)
         for i in range(0, self.size):
@@ -246,6 +289,9 @@ class Model:
                 self.layers[i].Compile(self.input_size)
             else:
                 self.layers[i].Compile(self.layers[i-1].output_size)
+        for i in range(0, self.size):
+            if isinstance(self.layers[i], BatchNormalization):
+                self.layers[i].batch_size = self.batch_size
         self.layer_outputSizes = [l.output_size for l in self.layers]
         self.isCompiled = True
     def Forward(self, inputs):
@@ -260,26 +306,34 @@ class Model:
         for i in range(0, self.size):
             x = self.layers[i].Forward(x) 
         return x
-    def Backward(self, inputs, real_values):
+    def Backward(self, batch):
         '''Calculating deltas and error'''
 
         if(not self.isCompiled):
             raise Exception('Compile the model before using it!')
 
-        predictions = self.Forward(inputs)
+        self.error = 0
+        er_delta = np.zeros((self.layer_outputSizes[-1],1))
+        for data in batch:
+            inputs = data[0]
+            real_values = np.expand_dims(np.array(data[1]),0)
+        
+            predictions = self.Forward(inputs)
     
-        #Error---------------------------------------
+            #Error---------------------------------------
 
-        #SquaredError
-        #er_delta = 2*(predictions - real_values.T) 
+            #SquaredError
+            er_delta = er_delta + 2*(predictions - real_values.T) 
+            #print(er_delta)
         
-        self.error = math.sqrt(np.sum((predictions - real_values.T)*(predictions - real_values.T)))
-        
-        #Categorical cross-entropy WITH SOFTMAX ON LAST LAYER
-        if(self.layers[-1].activation != 'softmax'):
-            raise Exception('You are using cat. cross-entropy with no softmax on the last layer. USE SOFTMAX PLEASE')
-        er_delta = predictions - real_values.T #Error delta
-        
+            self.error = self.error + math.sqrt(np.sum((predictions - real_values.T)*(predictions - real_values.T)))
+        er_delta = er_delta / self.batch_size
+        '''
+            #Categorical cross-entropy WITH SOFTMAX ON LAST LAYER
+            if(self.layers[-1].activation != 'softmax'):
+                raise Exception('You are using cat. cross-entropy with no softmax on the last layer. USE SOFTMAX PLEASE')
+            er_delta = er_delta + (predictions - real_values.T) #Error delta
+        '''
         #Calculating deltas of layers----------------
 
         self.layers[self.size-1].SetLastDelta_Backward(er_delta)
@@ -307,16 +361,27 @@ class Model:
         for i in range(0, self.size):
             if self.layers[i].isTrainable:
                 self.layers[i].Learn(learning_rate)
-    def Train(self, data_base, epochs, learning_rate):
+    def Train(self, data_base, epochs, learning_rate, batch_size = 1):
         '''Actual train function'''
         if(not self.isCompiled):
             raise Exception('Compile the model before using it!')
+        self.batch_size = batch_size
         for i in range(epochs):
             cum_error = 0
+            batches = []
+            restOfDataB = len(data_base)
+            counter = 0
+            batch = []
             for data in data_base:
-                input_data = data[0]
-                output_data = np.expand_dims(np.array(data[1]),0)
-                self.Backward(input_data,output_data)
+                batch.append(data)
+                counter = counter + 1
+                restOfDataB = restOfDataB - 1
+                if counter >= self.batch_size or restOfDataB <= 0:
+                    counter = 0
+                    batches.append(batch.copy())
+                    batch = []
+            for batch in batches:
+                self.Backward(batch)
                 self.Learn(learning_rate)
                 cum_error = cum_error + self.error
             cum_error = cum_error / len(data_base)

@@ -59,7 +59,7 @@ with open('iris.txt') as f:
         irisL[mI] = 1
         dataline.append(irisL)
         data.append(dataline)
-print(data)
+#print(data)
 dataTrain = []
 dataTest = []
 for d in data:
@@ -68,7 +68,7 @@ for d in data:
         dataTrain.append(d)
     else:
         dataTest.append(d)
-
+'''
 l1_2 = NeurNFN.DenseLayer(12,'linear')
 ld1 = NeurNFN.LayerNormalization()
 ld21 = NeurNFN.ReLU_L()
@@ -80,10 +80,16 @@ ld3 = NeurNFN.LayerNormalization()
 ld23 = NeurNFN.ReLU_L()
 l4_2 = NeurNFN.DenseLayer(3,'softmax')
 lay = [l1_2,ld1,ld21,l2_2,ld2,ld22,l3_2,ld3,ld23,l4_2]
+'''
+l1_2 = NeurNFN.DenseLayer(12,'sigmoid')
+l2_2 = NeurNFN.DenseLayer(40,'sigmoid')
+l3_2 = NeurNFN.DenseLayer(40,'sigmoid')
+l4_2 = NeurNFN.DenseLayer(3,'sigmoid')
+lay = [l1_2,l2_2,l3_2,l4_2]
 m2 = NeurNFN.Model(4, lay)
 m2.Compile()
 
-m2.Train(dataTrain,epochs = 1200, learning_rate = 0.003)
+m2.Train(dataTrain,epochs = 500, learning_rate = 0.09, batch_size=8)
 
 
 
