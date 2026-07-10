@@ -4,10 +4,13 @@ import matplotlib.pyplot as plt
 import copy
 #BOTH FUNCTIONS ONLY FOR VERTICAL MATRICES
 def Sigmoid(X):
-    S = np.zeros(shape=X.shape)
-    for i in range(0,len(X)):
-        x = X[i][0]
+    shap = X.shape
+    lX = X.flatten()
+    S = np.zeros(shape=lX.shape)
+    for i in range(0,len(lX)):
+        x = lX[i]
         S[i] = 1/(1+math.exp(-x))
+    S = S.reshape(shap)
     return S
 def SigmoidDer(X):
     S = np.zeros(shape=X.shape)
@@ -77,14 +80,9 @@ class DenseLayer:
         self.biases = np.random.randn(self.output_size,1)
 
     def Forward(self, inputs):
+        '''inputs->outputs'''
         self.remInputs = inputs
-        '''
-        if self.activation == 'relu' or self.activation == 'leaky_relu':
-            mean = np.sum(inputs)/len(inputs)
-            sd = max(np.std(inputs),1)
-            inputs = (inputs - mean)/sd
-            '''
-        self.S = self.weights @ inputs + self.biases
+        self.S = self.weights @ inputs + np.tile(self.biases,inputs.shape[1])
         match self.activation:
             case 'linear':
                 self.Y = self.S
@@ -98,6 +96,7 @@ class DenseLayer:
                 self.Y = Softmax(self.S)
         return self.Y
     def SetLastDelta_Backward(self, error_delta):
+        '''Sets the delta into the layer (when it is first in model)'''
         #This is [n-1] layer
         match self.activation:
             case 'linear':
@@ -112,6 +111,7 @@ class DenseLayer:
                 derv = SoftmaxDer(self.S)
         self.delta = derv * error_delta #The delta of the this layer 
     def Backward(self, next_inputs, next_activation, optional_alpha = 0):
+        '''Calculates the delta for the layer in back'''
         #This is [k] layer. Next_inputs must be S, not Y
         match next_activation:
             case 'linear':
@@ -131,10 +131,17 @@ class DenseLayer:
         if self.delta is None:
             raise Exception("THERE IS NO DELTA! Use Backward before Learn")
         else:
-            deltaWeight = self.remInputs @ self.delta.T
+            #We sum both the delta for biases and the delta for weights in the whole batch
+            summed_delta = self.delta.sum(axis=1, keepdims=True)
+            deltaWeight = np.zeros(shape=(self.remInputs.shape[0],self.delta.T.shape[1]))
+            for i in range(self.remInputs.shape[1]):
+                #This loop calculates the weight_delta matrices for all inputs in batch multiplied by all deltas in batch
+                #We expand dims since those are vectors, and we need matrices
+                deltaWeight = deltaWeight + np.expand_dims(self.remInputs[:,i],axis=1)@np.expand_dims(self.delta.T[i,:],axis=0)
+            #Updating weights and biases 
             wT = self.weights.T - learning_rate*deltaWeight
             self.weights = wT.T
-            self.biases = self.biases - learning_rate*self.delta
+            self.biases = self.biases - learning_rate*summed_delta
 class LayerNormalization:
     def __init__(self):
         self.isTrainable = True
@@ -229,7 +236,6 @@ class Sigmoid_L:
         self.remInputs = inputs
         self.outputs = Sigmoid(inputs)
         self.S = self.outputs
-        #print(self.outputs)
         return self.outputs
     def SetLastDelta_Backward(self, error_delta):
         self.delta = error_delta 
@@ -247,7 +253,6 @@ class ReLU_L:
         self.remInputs = inputs
         self.outputs = ReLU(inputs)
         self.S = self.outputs
-        #print(self.outputs)
         return self.outputs
     def SetLastDelta_Backward(self, error_delta):
         self.delta = error_delta 
@@ -266,7 +271,6 @@ class LeakyReLU_L:
         self.remInputs = inputs
         self.outputs = LeakyReLU(inputs, self.alpha)
         self.S = self.outputs
-        #print(self.outputs)
         return self.outputs
     def SetLastDelta_Backward(self, error_delta):
         self.delta = error_delta 
@@ -283,7 +287,7 @@ class Model:
         self.layer_outputSizes = []
         self.batch_size = batch_size    
     def Compile(self):
-        print(self.layer_outputSizes)
+        '''Compiles the whole model'''
         for i in range(0, self.size):
             if i == 0:
                 self.layers[i].Compile(self.input_size)
@@ -296,13 +300,16 @@ class Model:
         self.isCompiled = True
     def Forward(self, inputs):
         '''Inputs->outputs'''
-
         if(not self.isCompiled):
             raise Exception('Compile the model before using it!')
-        input_data = np.expand_dims(np.array(inputs),0)
-        if len(input_data[0]) != self.input_size:
+        #For inputs that are vectors, we make them into matrices (n,1)
+        input_data = np.array(inputs)
+        if(len(input_data.shape) == 1):
+            input_data = np.expand_dims(input_data,axis=1)
+
+        if input_data.shape[0] != self.input_size:
             raise Exception("Wrong input size!")
-        x = input_data.T
+        x = input_data
         for i in range(0, self.size):
             x = self.layers[i].Forward(x) 
         return x
@@ -313,26 +320,35 @@ class Model:
             raise Exception('Compile the model before using it!')
 
         self.error = 0
-        er_delta = np.zeros((self.layer_outputSizes[-1],1))
+        er_delta = np.zeros((self.layer_outputSizes[-1],self.batch_size))
+        batch_inputs = []
+        batch_real_values = []
         for data in batch:
-            inputs = data[0]
-            real_values = np.expand_dims(np.array(data[1]),0)
-        
-            predictions = self.Forward(inputs)
-    
-            #Error---------------------------------------
+            batch_inputs.append(data[0])
+            batch_real_values.append(data[1])
 
-            #SquaredError
-            er_delta = er_delta + 2*(predictions - real_values.T) 
-            #print(er_delta)
+        batch_inputs_matrix = np.array(batch_inputs)
+        batch_real_values_matrix = np.array(batch_real_values).T
+
+        predictions_batch = self.Forward(batch_inputs_matrix.T)
+        er = np.sum((predictions_batch - batch_real_values_matrix)*(predictions_batch - batch_real_values_matrix))
+        self.error = er
+
+        #Error---------------------------------------
+
+        #SquaredError
+        er_delta = 2*(predictions_batch - batch_real_values_matrix)
+        #print('Kolam',er_delta.shape)
         
-            self.error = self.error + math.sqrt(np.sum((predictions - real_values.T)*(predictions - real_values.T)))
         er_delta = er_delta / self.batch_size
         '''
             #Categorical cross-entropy WITH SOFTMAX ON LAST LAYER
             if(self.layers[-1].activation != 'softmax'):
                 raise Exception('You are using cat. cross-entropy with no softmax on the last layer. USE SOFTMAX PLEASE')
-            er_delta = er_delta + (predictions - real_values.T) #Error delta
+            er_delta = (predictions_batch - batch_real_values_matrix).sum(axis=1) #Error delta
+            er_delta = np.expand_dims(er_delta,1)
+        
+            er_delta = er_delta / self.batch_size
         '''
         #Calculating deltas of layers----------------
 
