@@ -68,18 +68,18 @@ for d in data:
         dataTrain.append(d)
     else:
         dataTest.append(d)
-'''
-l1_2 = NeurNFN.DenseLayer(12,'linear')
-ld1 = NeurNFN.LayerNormalization()
-ld21 = NeurNFN.ReLU_L()
-l2_2 = NeurNFN.DenseLayer(40,'linear')
-ld2 = NeurNFN.LayerNormalization()
-ld22 = NeurNFN.ReLU_L()
-l3_2 = NeurNFN.DenseLayer(40,'linear')
-ld3 = NeurNFN.LayerNormalization()
-ld23 = NeurNFN.ReLU_L()
-l4_2 = NeurNFN.DenseLayer(3,'softmax')
-lay = [l1_2,ld1,ld21,l2_2,ld2,ld22,l3_2,ld3,ld23,l4_2]
+l1_2 = NeurNFN.DenseLayer(3,'linear')
+ld1 = NeurNFN.BatchNormalization()
+ld1p = NeurNFN.ReLU_L()
+l2_2 = NeurNFN.DenseLayer(5,'linear')
+ld2 = NeurNFN.BatchNormalization()
+ld2p = NeurNFN.ReLU_L()
+l3_2 = NeurNFN.DenseLayer(5,'linear')
+ld3 = NeurNFN.BatchNormalization()
+ld3p = NeurNFN.ReLU_L()
+l4_2 = NeurNFN.DenseLayer(3,'sigmoid')
+lay = [l1_2,ld1,ld1p,l2_2,ld2,ld2p,l3_2,ld3,ld3p,l4_2]
+
 '''
 l1_2 = NeurNFN.DenseLayer(5,'sigmoid')
 l2_2 = NeurNFN.DenseLayer(7,'sigmoid')
@@ -87,10 +87,9 @@ l3_2 = NeurNFN.DenseLayer(5,'linear')
 ld = NeurNFN.Sigmoid_L()
 l4_2 = NeurNFN.DenseLayer(3,'sigmoid')
 lay = [l1_2,l2_2,l3_2,ld, l4_2]
+'''
 m2 = NeurNFN.Model(4, lay)
-m2.Compile()
-
-m2.Train(dataTrain,epochs = 2, learning_rate = 0.09, batch_size=8)
+m2.Train(dataTrain,epochs = 2000, learning_rate = 0.044, batch_size=8)
 
 
 

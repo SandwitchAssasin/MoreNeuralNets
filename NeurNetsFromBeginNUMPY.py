@@ -10,7 +10,10 @@ def Sigmoid(X):
     S = np.zeros(shape=lX.shape)
     for i in range(0,len(lX)):
         x = lX[i]
-        S[i] = 1/(1+math.exp(-x))
+        if x >= 0:
+            S[i] = 1/(1+math.exp(-x))
+        else:
+            S[i] = math.exp(x)/(1+math.exp(x))
     S = S.reshape(shap)
     return S
 def SigmoidDer(X):
@@ -68,23 +71,20 @@ def LeakyReLUDer(X, alpha):
     S = S.reshape(shap)
     return S
 def Softmax(X):
-    shap = X.shape
-    lX = X.flatten()
-    S = np.zeros(shape=lX.shape)
-    c = 0
-    for i in range(0,len(lX)):
-        x = lX[i]
-        c = c + math.exp(x)
-    for i in range(0,len(lX)):
-        x = lX[i]
-        S[i] = math.exp(x)/c
-    S = S.reshape(shap)
+    S = np.zeros(shape=X.shape)
+    dims = X.shape
+    for v in range(dims[0]):
+        c = 0
+        for i in range(dims[1]):
+            x = X[v,i]
+            c = c + math.exp(x)
+        for i in range(dims[1]):
+            x = X[v,i]
+            S[v,i] = math.exp(x)/c
     return S 
 def SoftmaxDer(X):
-    shap = X.shape
-    lX = X.flatten()
-    S = np.zeros(shape=lX.shape)
-    S = Softmax(X)*(np.ones(shape=lX.shape)- Softmax(X))
+    S = np.zeros(shape=X.shape)
+    S = Softmax(X)*(np.ones(shape=X.shape)- Softmax(X))
     return S 
 class DenseLayer:
     def __init__(self, size, activation = 'linear', optional_alpha = 0):
@@ -169,85 +169,95 @@ class LayerNormalization:
     def Compile(self, input_size):
         self.size = input_size
         self.output_size = self.size #The same as size, just different names
-        #self.batch_size = 
-        self.gammas = np.random.randn(input_size,1)
-        self.biases = np.random.randn(input_size,1)
+        self.gammas = np.random.randn(1,self.size)
+        self.biases = np.random.randn(1,self.size)
         self.S = None
 
     def Forward(self, inputs):
         self.remInputs = inputs
-        self.mean = np.sum(inputs)/self.size
-        self.var = (np.sum((inputs - self.mean)*(inputs - self.mean)))/self.size
+        self.means = np.expand_dims(np.sum(inputs,axis=1)/self.size,axis=1) #(batch_size,1)
+        self.vars = (np.sum((inputs - self.means)*(inputs - self.means),axis=1))/self.size #(batch_size,1)
+        
         self.epsilon = 0.00001
-        self.outputs = (inputs - self.mean)/math.sqrt(self.var + self.epsilon)
+        #Leaky_relu ma problem na pewno
+        self.normalized_x = (inputs - self.means)/np.expand_dims(np.sqrt(self.vars + self.epsilon),axis=1)
+        self.outputs = self.gammas * self.normalized_x + self.biases
         self.S = self.outputs
+        #print(self.outputs)
        
         return self.outputs
     def SetLastDelta_Backward(self, error_delta):
         self.delta = error_delta 
     def Backward(self):
-        #s = sqrt(var + epsilon), scalar
-        reversed_s = 1/math.sqrt(self.var + self.epsilon)
-        gradient_of_error_with_respect_to_normalized_x = self.delta * self.gammas
-        m_of_g_of_e_to_n_x = np.mean(gradient_of_error_with_respect_to_normalized_x) #mean of the above gradient
-        m_of_g_of_multi = np.mean(gradient_of_error_with_respect_to_normalized_x * self.outputs) #It's self-explanatory
-        next_delta = reversed_s*(gradient_of_error_with_respect_to_normalized_x - m_of_g_of_e_to_n_x - self.outputs * m_of_g_of_multi)
+        reversed_s = np.expand_dims(1/np.sqrt(self.vars + self.epsilon),axis=1)
+        gradient_of_error_with_respect_to_normalized_x = self.delta * np.tile(self.gammas,(self.batch_size,1))
+        
+        m_of_g_of_e_to_n_x = np.mean(gradient_of_error_with_respect_to_normalized_x,axis=1,keepdims=True) #mean of the above gradient
+        #print('v',m_of_g_of_e_to_n_x.shape, gradient_of_error_with_respect_to_normalized_x.shape)
+        m_of_g_of_multi = np.mean(gradient_of_error_with_respect_to_normalized_x * self.normalized_x,axis=1,keepdims=True) #It's self-explanatory
+        #print('J',self.outputs)
+        #print('v', reversed_s,gradient_of_error_with_respect_to_normalized_x,m_of_g_of_e_to_n_x,self.outputs,m_of_g_of_multi)
+        next_delta = reversed_s*(gradient_of_error_with_respect_to_normalized_x - m_of_g_of_e_to_n_x - self.normalized_x * m_of_g_of_multi)
         return next_delta
     def Learn(self, learning_rate):
         if self.delta is None:
             raise Exception("THERE IS NO DELTA! Use Backward before Learn")
         else:
-            #delta_gammas = self.delta * (self.remInputs - self.mean)/math.sqrt(self.var + self.epsilon)
             delta_gammas = self.delta * self.outputs
-            self.gammas = self.gammas - learning_rate*delta_gammas
-            self.biases = self.biases - learning_rate*self.delta
+            #print('L',self.delta)
+            summed_delta = np.sum(self.delta,axis=0,keepdims=True)
+            summed_delta_gammas = np.sum(delta_gammas,axis=0,keepdims=True)
+            #print('H',summed_delta_gammas)
+            self.gammas = self.gammas - learning_rate*summed_delta_gammas
+            self.biases = self.biases - learning_rate*summed_delta
 class BatchNormalization:
-    #Trzeba zrobic!!
+    #Trzeba dokonczyc
     def __init__(self):
         self.isTrainable = True
-        self.batch_size = 0
     def Compile(self, input_size):
         self.size = input_size
         self.output_size = self.size #The same as size, just different names
-        self.gammas = np.random.randn(input_size,1)
-        self.biases = np.random.randn(input_size,1)
-        self.running_means = np.zeros((self.size,1))
-        self.running_vars = np.zeros((self.size,1))
-        self.counter = 0
-        self.momentum = 0.9
+        self.gammas = np.random.randn(self.batch_size,1)
+        self.biases = np.random.randn(self.batch_size,1)
         self.S = None
-        self.remInputs = []
 
     def Forward(self, inputs):
-        self.remInputs.append(inputs)
+        self.remInputs = inputs
+        self.means = np.expand_dims(np.sum(inputs,axis=0)/self.batch_size,axis=0) #(1,size)
+        self.vars = (np.sum((inputs - self.means)*(inputs - self.means),axis=0))/self.batch_size #(1,size)
+        
         self.epsilon = 0.00001
-        self.outputs = (inputs - self.running_means)/math.sqrt(self.running_vars + self.epsilon)
+        #Leaky_relu ma problem na pewno
+        self.normalized_x = (inputs - self.means)/np.expand_dims(np.sqrt(self.vars + self.epsilon),axis=0)
+        self.outputs = self.gammas * self.normalized_x + self.biases
         self.S = self.outputs
-
-        counter = counter + 1
-        if counter >= self.batch_size:
-            self.running_means = np.sum(inputs)/self.size
-            self.var = (np.sum((inputs - self.mean)*(inputs - self.mean)))/self.size
-            counter = 0
+        #print(self.outputs)
        
         return self.outputs
     def SetLastDelta_Backward(self, error_delta):
         self.delta = error_delta 
     def Backward(self):
-        #s = sqrt(var + epsilon), scalar
-        reversed_s = 1/math.sqrt(self.var + self.epsilon)
-        gradient_of_error_with_respect_to_normalized_x = self.delta * self.gammas
-        m_of_g_of_e_to_n_x = np.mean(gradient_of_error_with_respect_to_normalized_x) #mean of the above gradient
-        m_of_g_of_multi = np.mean(gradient_of_error_with_respect_to_normalized_x * self.outputs) #It's self-explanatory
-        next_delta = reversed_s*(gradient_of_error_with_respect_to_normalized_x - m_of_g_of_e_to_n_x - self.outputs * m_of_g_of_multi)
+        reversed_s = np.expand_dims(1/np.sqrt(self.vars + self.epsilon),axis=1)
+        gradient_of_error_with_respect_to_normalized_x = self.delta * np.tile(self.gammas,(self.batch_size,1))
+        
+        m_of_g_of_e_to_n_x = np.mean(gradient_of_error_with_respect_to_normalized_x,axis=1,keepdims=True) #mean of the above gradient
+        #print('v',m_of_g_of_e_to_n_x.shape, gradient_of_error_with_respect_to_normalized_x.shape)
+        m_of_g_of_multi = np.mean(gradient_of_error_with_respect_to_normalized_x * self.normalized_x,axis=1,keepdims=True) #It's self-explanatory
+        #print('J',self.outputs)
+        #print('v', reversed_s,gradient_of_error_with_respect_to_normalized_x,m_of_g_of_e_to_n_x,self.outputs,m_of_g_of_multi)
+        next_delta = reversed_s*(gradient_of_error_with_respect_to_normalized_x - m_of_g_of_e_to_n_x - self.normalized_x * m_of_g_of_multi)
         return next_delta
     def Learn(self, learning_rate):
         if self.delta is None:
             raise Exception("THERE IS NO DELTA! Use Backward before Learn")
         else:
-            delta_gammas = self.delta * (self.remInputs - self.mean)/math.sqrt(self.var + self.epsilon)
-            self.gammas = self.gammas - learning_rate*delta_gammas
-            self.biases = self.biases - learning_rate*self.delta
+            delta_gammas = self.delta * self.outputs
+            #print('L',self.delta)
+            summed_delta = np.sum(self.delta,axis=0,keepdims=True)
+            summed_delta_gammas = np.sum(delta_gammas,axis=0,keepdims=True)
+            #print('H',summed_delta_gammas)
+            self.gammas = self.gammas - learning_rate*summed_delta_gammas
+            self.biases = self.biases - learning_rate*summed_delta
 class Sigmoid_L:
     def __init__(self):
         self.isTrainable = False
@@ -309,8 +319,10 @@ class Model:
         self.isCompiled = False
         self.layer_outputSizes = []
         self.batch_size = batch_size    
-    def Compile(self):
+    def Compile(self,batch_size):
         '''Compiles the whole model'''
+        for i in range(0, self.size):
+            self.layers[i].batch_size = batch_size
         for i in range(0, self.size):
             if i == 0:
                 self.layers[i].Compile(self.input_size)
@@ -358,20 +370,19 @@ class Model:
         self.error = er
 
         #Error---------------------------------------
-
+        
         #SquaredError
         er_delta = 2*(predictions_batch - batch_real_values_matrix) #Error delta is (output_size, batch_size)
-        #print('Kolam',er_delta.shape)
         
         er_delta = er_delta / self.batch_size
         '''
-            #Categorical cross-entropy WITH SOFTMAX ON LAST LAYER
-            if(self.layers[-1].activation != 'softmax'):
-                raise Exception('You are using cat. cross-entropy with no softmax on the last layer. USE SOFTMAX PLEASE')
-            er_delta = (predictions_batch - batch_real_values_matrix).sum(axis=1) #Error delta
-            er_delta = np.expand_dims(er_delta,1)
+        #Categorical cross-entropy WITH SOFTMAX ON LAST LAYER
+        if(self.layers[-1].activation != 'softmax'):
+            raise Exception('You are using cat. cross-entropy with no softmax on the last layer. USE SOFTMAX PLEASE')
+        er_delta = (predictions_batch - batch_real_values_matrix).sum(axis=1) #Error delta
+        er_delta = np.expand_dims(er_delta,1)
         
-            er_delta = er_delta / self.batch_size
+        er_delta = er_delta / self.batch_size
         '''
         #Calculating deltas of layers----------------
 
@@ -393,6 +404,7 @@ class Model:
                 self.layers[i-1].delta = self.layers[i].Backward()
             if isinstance(self.layers[i], LeakyReLU_L):
                 self.layers[i-1].delta = self.layers[i].Backward()
+            #print(self.layers[i-1].delta)
     def Learn(self, learning_rate):
         '''Using deltas to learn the net'''
         if(not self.isCompiled):
@@ -402,10 +414,9 @@ class Model:
                 self.layers[i].Learn(learning_rate)
     def Train(self, data_base, epochs, learning_rate, batch_size = 1):
         '''Actual train function'''
-        if(not self.isCompiled):
-            raise Exception('Compile the model before using it!')
+        self.Compile(batch_size)
         self.batch_size = batch_size
-        for i in range(epochs):
+        for ep in range(0,epochs):
             cum_error = 0
             batches = []
             restOfDataB = len(data_base)
@@ -420,11 +431,13 @@ class Model:
                     batches.append(batch.copy())
                     batch = []
             for batch in batches:
+                for i in range(0, self.size):
+                    self.layers[i].batch_size = len(batch)
                 self.Backward(batch)
                 self.Learn(learning_rate)
                 cum_error = cum_error + self.error
             cum_error = cum_error / len(data_base)
-            print('Epoch nr. ' + str(i) + ' Error: ' + str(round(cum_error,4)))
+            print('Epoch nr. ' + str(ep) + ' Error: ' + str(round(cum_error,4)))
 
 
 #Sigmoid wiec wyjscia sa od [0,1]
