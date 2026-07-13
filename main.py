@@ -83,13 +83,14 @@ lay = [l1_2,ld1,ld21,l2_2,ld2,ld22,l3_2,ld3,ld23,l4_2]
 '''
 l1_2 = NeurNFN.DenseLayer(5,'sigmoid')
 l2_2 = NeurNFN.DenseLayer(7,'sigmoid')
-l3_2 = NeurNFN.DenseLayer(5,'sigmoid')
+l3_2 = NeurNFN.DenseLayer(5,'linear')
+ld = NeurNFN.Sigmoid_L()
 l4_2 = NeurNFN.DenseLayer(3,'sigmoid')
-lay = [l1_2,l2_2,l3_2,l4_2]
+lay = [l1_2,l2_2,l3_2,ld, l4_2]
 m2 = NeurNFN.Model(4, lay)
 m2.Compile()
 
-m2.Train(dataTrain,epochs = 1000, learning_rate = 0.09, batch_size=8)
+m2.Train(dataTrain,epochs = 2, learning_rate = 0.09, batch_size=8)
 
 
 

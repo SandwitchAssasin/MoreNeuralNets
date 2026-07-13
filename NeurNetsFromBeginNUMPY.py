@@ -2,6 +2,7 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 import copy
+#CAN USE CuPy FOR INSTANT GPU SUPPORT!!!!!!
 #BOTH FUNCTIONS ONLY FOR VERTICAL MATRICES
 def Sigmoid(X):
     shap = X.shape
@@ -13,59 +14,77 @@ def Sigmoid(X):
     S = S.reshape(shap)
     return S
 def SigmoidDer(X):
-    S = np.zeros(shape=X.shape)
+    shap = X.shape
+    lX = X.flatten()
+    S = np.zeros(shape=lX.shape)
     S = Sigmoid(X)*(1-Sigmoid(X))
     return S 
 def ReLU(X):
-    S = np.zeros(shape=X.shape)
+    shap = X.shape
+    lX = X.flatten()
+    S = np.zeros(shape=lX.shape)
     for i in range(0,len(X)):
-        x = X[i][0]
+        x = lX[i]
         if x <= 0:
             S[i] = 0
         else:
             S[i] = x
-    return S 
+    S = S.reshape(shap)
+    return S
 def ReLUDer(X):
-    S = np.zeros(shape=X.shape)
+    shap = X.shape
+    lX = X.flatten()
+    S = np.zeros(shape=lX.shape)
     for i in range(0,len(X)):
-        x = X[i][0]
+        x = lX[i]
         if x <= 0:
             S[i] = 0
         else:
             S[i] = 1
-    return S 
+    S = S.reshape(shap)
+    return S
 def LeakyReLU(X, alpha):
-    S = np.zeros(shape=X.shape)
+    shap = X.shape
+    lX = X.flatten()
+    S = np.zeros(shape=lX.shape)
     for i in range(0,len(X)):
-        x = X[i][0]
+        x = lX[i]
         if x <= 0:
-            S[i] = alpha * x
+            S[i] = alpha*x
         else:
             S[i] = x
-    return S 
+    S = S.reshape(shap)
+    return S
 def LeakyReLUDer(X, alpha):
-    S = np.zeros(shape=X.shape)
+    shap = X.shape
+    lX = X.flatten()
+    S = np.zeros(shape=lX.shape)
     for i in range(0,len(X)):
-        x = X[i][0]
+        x = lX[i]
         if x <= 0:
             S[i] = alpha
         else:
             S[i] = 1
-    return S 
+    S = S.reshape(shap)
+    return S
 def Softmax(X):
-    S = np.zeros(shape=X.shape)
+    shap = X.shape
+    lX = X.flatten()
+    S = np.zeros(shape=lX.shape)
     c = 0
-    for i in range(0,len(X)):
-        x = X[i][0]
+    for i in range(0,len(lX)):
+        x = lX[i]
         c = c + math.exp(x)
-    for i in range(0,len(X)):
-        x = X[i][0]
+    for i in range(0,len(lX)):
+        x = lX[i]
         S[i] = math.exp(x)/c
-   # print(X, ':', S)
+    S = S.reshape(shap)
     return S 
 def SoftmaxDer(X):
-    S = np.zeros(shape=X.shape)
-    S = Softmax(X)*(np.ones(shape=X.shape)- Softmax(X))
+    shap = X.shape
+    lX = X.flatten()
+    S = np.zeros(shape=lX.shape)
+    S = Softmax(X)*(np.ones(shape=lX.shape)- Softmax(X))
     return S 
 class DenseLayer:
     def __init__(self, size, activation = 'linear', optional_alpha = 0):
@@ -73,16 +92,18 @@ class DenseLayer:
         self.activation = activation
         self.optional_alpha = optional_alpha
         self.isTrainable = True
+        self.batch_size = 0
         
     def Compile(self, input_size):
         self.input_size = input_size
         self.weights = np.random.randn(self.output_size,self.input_size)
-        self.biases = np.random.randn(self.output_size,1)
+        self.biases = np.random.randn(1,self.output_size)
 
     def Forward(self, inputs):
         '''inputs->outputs'''
         self.remInputs = inputs
-        self.S = self.weights @ inputs + np.tile(self.biases,inputs.shape[1])
+        self.batch_size = inputs.shape[0]
+        self.S = inputs @ self.weights.T + np.tile(self.biases,(self.batch_size,1))
         match self.activation:
             case 'linear':
                 self.Y = self.S
@@ -124,7 +145,7 @@ class DenseLayer:
                 derv = LeakyReLUDer(next_inputs, optional_alpha)
             case 'softmax':
                 derv = SoftmaxDer(next_inputs)
-        wage_l_delta_prod = self.weights.T @ self.delta
+        wage_l_delta_prod =  self.delta @ self.weights
         next_delta = derv * wage_l_delta_prod #The delta of [k-1] layer
         return next_delta
     def Learn(self, learning_rate):
@@ -132,12 +153,12 @@ class DenseLayer:
             raise Exception("THERE IS NO DELTA! Use Backward before Learn")
         else:
             #We sum both the delta for biases and the delta for weights in the whole batch
-            summed_delta = self.delta.sum(axis=1, keepdims=True)
-            deltaWeight = np.zeros(shape=(self.remInputs.shape[0],self.delta.T.shape[1]))
-            for i in range(self.remInputs.shape[1]):
+            summed_delta = self.delta.sum(axis=0, keepdims=True)
+            deltaWeight = np.zeros(shape=(self.input_size,self.delta.shape[1]))
+            for i in range(self.batch_size):
                 #This loop calculates the weight_delta matrices for all inputs in batch multiplied by all deltas in batch
                 #We expand dims since those are vectors, and we need matrices
-                deltaWeight = deltaWeight + np.expand_dims(self.remInputs[:,i],axis=1)@np.expand_dims(self.delta.T[i,:],axis=0)
+                deltaWeight = deltaWeight + np.expand_dims(self.remInputs[i,:],axis=0).T@np.expand_dims(self.delta[i,:],axis=0)
             #Updating weights and biases 
             wT = self.weights.T - learning_rate*deltaWeight
             self.weights = wT.T
@@ -148,6 +169,7 @@ class LayerNormalization:
     def Compile(self, input_size):
         self.size = input_size
         self.output_size = self.size #The same as size, just different names
+        #self.batch_size = 
         self.gammas = np.random.randn(input_size,1)
         self.biases = np.random.randn(input_size,1)
         self.S = None
@@ -175,7 +197,8 @@ class LayerNormalization:
         if self.delta is None:
             raise Exception("THERE IS NO DELTA! Use Backward before Learn")
         else:
-            delta_gammas = self.delta * (self.remInputs - self.mean)/math.sqrt(self.var + self.epsilon)
+            #delta_gammas = self.delta * (self.remInputs - self.mean)/math.sqrt(self.var + self.epsilon)
+            delta_gammas = self.delta * self.outputs
             self.gammas = self.gammas - learning_rate*delta_gammas
             self.biases = self.biases - learning_rate*self.delta
 class BatchNormalization:
@@ -305,9 +328,9 @@ class Model:
         #For inputs that are vectors, we make them into matrices (n,1)
         input_data = np.array(inputs)
         if(len(input_data.shape) == 1):
-            input_data = np.expand_dims(input_data,axis=1)
+            input_data = np.expand_dims(input_data,axis=0)
 
-        if input_data.shape[0] != self.input_size:
+        if input_data.shape[1] != self.input_size:
             raise Exception("Wrong input size!")
         x = input_data
         for i in range(0, self.size):
@@ -320,7 +343,7 @@ class Model:
             raise Exception('Compile the model before using it!')
 
         self.error = 0
-        er_delta = np.zeros((self.layer_outputSizes[-1],self.batch_size))
+        er_delta = np.zeros((self.batch_size,self.layer_outputSizes[-1]))
         batch_inputs = []
         batch_real_values = []
         for data in batch:
@@ -328,16 +351,16 @@ class Model:
             batch_real_values.append(data[1])
 
         batch_inputs_matrix = np.array(batch_inputs)
-        batch_real_values_matrix = np.array(batch_real_values).T
+        batch_real_values_matrix = np.array(batch_real_values)
 
-        predictions_batch = self.Forward(batch_inputs_matrix.T)
+        predictions_batch = self.Forward(batch_inputs_matrix)
         er = np.sum((predictions_batch - batch_real_values_matrix)*(predictions_batch - batch_real_values_matrix))
         self.error = er
 
         #Error---------------------------------------
 
         #SquaredError
-        er_delta = 2*(predictions_batch - batch_real_values_matrix)
+        er_delta = 2*(predictions_batch - batch_real_values_matrix) #Error delta is (output_size, batch_size)
         #print('Kolam',er_delta.shape)
         
         er_delta = er_delta / self.batch_size
