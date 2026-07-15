@@ -29,13 +29,14 @@ print(m.Forward((4,2)))
 plt.scatter(X,Y,c=c,cmap='coolwarm')
 plt.show()
 '''
-
+ar = np.array([[4,5],[10,3],[15,70]])
+#print(ar - [2,2,6])
 #Real project - Irises
 
 def BladPredykcji(pred, real):
     suma = 0
-    for i in range(0,len(pred)):
-        suma = suma + (pred[i] - real[i])**2
+    for i in range(0,len(pred[0])):
+        suma = suma + (pred[0][i] - real[i])**2
     return suma/len(pred)
 
 with open('iris.txt') as f:
@@ -68,18 +69,21 @@ for d in data:
         dataTrain.append(d)
     else:
         dataTest.append(d)
-l1_2 = NeurNFN.DenseLayer(3,'linear')
-ld1 = NeurNFN.BatchNormalization()
-ld1p = NeurNFN.ReLU_L()
-l2_2 = NeurNFN.DenseLayer(5,'linear')
-ld2 = NeurNFN.BatchNormalization()
-ld2p = NeurNFN.ReLU_L()
-l3_2 = NeurNFN.DenseLayer(5,'linear')
-ld3 = NeurNFN.BatchNormalization()
-ld3p = NeurNFN.ReLU_L()
-l4_2 = NeurNFN.DenseLayer(3,'sigmoid')
-lay = [l1_2,ld1,ld1p,l2_2,ld2,ld2p,l3_2,ld3,ld3p,l4_2]
 
+#Mozliwe ze dziala, tylko po prostu nie potrafi poprawnie predictowac
+l1_2 = NeurNFN.DenseLayer(20,'linear')
+ld1 = NeurNFN.BatchNormalization()
+ld1p = NeurNFN.Sigmoid_L()
+l2_2 = NeurNFN.DenseLayer(30,'linear')
+ld2 = NeurNFN.BatchNormalization()
+ld2p = NeurNFN.Sigmoid_L()
+l3_2 = NeurNFN.DenseLayer(30,'linear')
+ld3 = NeurNFN.BatchNormalization()
+ld3p = NeurNFN.Sigmoid_L()
+l4_2 = NeurNFN.DenseLayer(3,'sigmoid')
+
+#lay = [l1_2,ld1,ld1p,l2_2,ld2,ld2p,l3_2,ld3,ld3p,l4_2]
+lay = [l1_2,ld1,ld1p,l2_2,ld2,ld2p,l3_2,ld3,ld3p,l4_2]
 '''
 l1_2 = NeurNFN.DenseLayer(5,'sigmoid')
 l2_2 = NeurNFN.DenseLayer(7,'sigmoid')
@@ -89,11 +93,10 @@ l4_2 = NeurNFN.DenseLayer(3,'sigmoid')
 lay = [l1_2,l2_2,l3_2,ld, l4_2]
 '''
 m2 = NeurNFN.Model(4, lay)
-m2.Train(dataTrain,epochs = 2000, learning_rate = 0.044, batch_size=8)
-
+m2.Train(dataTrain,epochs = 500, learning_rate = 0.04, batch_size=8)
 
 
 for d in dataTest:
     predictions = m2.Forward(d[0])
     real = d[1]
-    print(irises_res[np.argmax(real)], ":", irises_res[np.argmax(predictions)], ":" , round(BladPredykcji(predictions,real)[0],2))
+    print(irises_res[np.argmax(real)], ":", irises_res[np.argmax(predictions)], ":" , np.round(BladPredykcji(predictions,real),2))
