@@ -2,16 +2,28 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 import NeurNetsFromBeginNUMPY as NeurNFN
+
+
+
 '''
-m = NeurNFN.Model(2, (4,6,1))
-print(m.Forward((4,2)))
 databs = [[(4,2),1],[(1,1),1],[(1.5,1.6),1],[(1.2,1.4),1],
-          [(3.4,4),0],[(0.3,0.5),0],[(1.9,0.1),0],[(0.2,4.4),0],[(1.5,3.4),0],
-          [(4,1.4),0],[(4,3),0]]
+          [(3.4,4),1],[(0.3,0.5),0],[(1.9,0.1),0],[(0.2,4.4),0],[(1.5,3.4),0],
+          [(4,1.4),0],[(3,3),0]]
 for dt in databs:
     dt[1] = [dt[1]]
 
-m.Train(databs, 4000, 0.03)
+l1_2 = NeurNFN.DenseLayer(10,'sigmoid')
+l2_2 = NeurNFN.DenseLayer(15,'linear')
+lds = NeurNFN.BatchNormalization()
+ld2s = NeurNFN.LeakyReLU_L(0.1)
+l3_2 = NeurNFN.DenseLayer(15,'linear')
+ld = NeurNFN.BatchNormalization()
+ld2 = NeurNFN.LeakyReLU_L(0.1)
+l4_2 = NeurNFN.DenseLayer(1,'sigmoid')
+lay = [l1_2,l2_2,lds,ld2s,l3_2,ld,ld2, l4_2]
+
+m = NeurNFN.Model(2, lay)
+m.Train(databs,epochs = 3000, learning_rate = 0.15, batch_size=8)
 plt.subplot(1,2,1)
 for data in databs:
     colr = 'blue'
@@ -25,12 +37,11 @@ c = []
 for cint in range(0,1000):
     c.append(m.Forward((X[cint],Y[cint])))
 
-print(m.Forward((4,2)))
 plt.scatter(X,Y,c=c,cmap='coolwarm')
 plt.show()
 '''
-ar = np.array([[4,5],[10,3],[15,70]])
-#print(ar - [2,2,6])
+
+
 #Real project - Irises
 
 def BladPredykcji(pred, real):
@@ -71,32 +82,30 @@ for d in data:
         dataTest.append(d)
 
 #Mozliwe ze dziala, tylko po prostu nie potrafi poprawnie predictowac
+'''
 l1_2 = NeurNFN.DenseLayer(20,'linear')
 ld1 = NeurNFN.BatchNormalization()
-ld1p = NeurNFN.Sigmoid_L()
+ld1p = NeurNFN.LeakyReLU_L(0.1)
 l2_2 = NeurNFN.DenseLayer(30,'linear')
 ld2 = NeurNFN.BatchNormalization()
-ld2p = NeurNFN.Sigmoid_L()
+ld2p = NeurNFN.LeakyReLU_L(0.1)
 l3_2 = NeurNFN.DenseLayer(30,'linear')
-ld3 = NeurNFN.BatchNormalization()
-ld3p = NeurNFN.Sigmoid_L()
-l4_2 = NeurNFN.DenseLayer(3,'sigmoid')
+l4_2 = NeurNFN.DenseLayer(3,'softmax')
 
-#lay = [l1_2,ld1,ld1p,l2_2,ld2,ld2p,l3_2,ld3,ld3p,l4_2]
-lay = [l1_2,ld1,ld1p,l2_2,ld2,ld2p,l3_2,ld3,ld3p,l4_2]
+lay = [l1_2,ld1,ld1p,l2_2,ld2,ld2p,l3_2,l4_2]
 '''
-l1_2 = NeurNFN.DenseLayer(5,'sigmoid')
-l2_2 = NeurNFN.DenseLayer(7,'sigmoid')
-l3_2 = NeurNFN.DenseLayer(5,'linear')
-ld = NeurNFN.Sigmoid_L()
-l4_2 = NeurNFN.DenseLayer(3,'sigmoid')
-lay = [l1_2,l2_2,l3_2,ld, l4_2]
-'''
+l1_2 = NeurNFN.DenseLayer(15,'leaky_relu',0.1)
+l2_2 = NeurNFN.DenseLayer(17,'leaky_relu',0.1)
+l3_2 = NeurNFN.DenseLayer(15,'leaky_relu',0.1)
+l4_2 = NeurNFN.DenseLayer(3,'softmax')
+lay = [l1_2,l2_2,l3_2, l4_2]
+
 m2 = NeurNFN.Model(4, lay)
-m2.Train(dataTrain,epochs = 500, learning_rate = 0.04, batch_size=8)
+m2.Train(dataTrain,epochs = 500, learning_rate = 0.0004, batch_size=8)
 
 
 for d in dataTest:
     predictions = m2.Forward(d[0])
     real = d[1]
     print(irises_res[np.argmax(real)], ":", irises_res[np.argmax(predictions)], ":" , np.round(BladPredykcji(predictions,real),2))
+    
