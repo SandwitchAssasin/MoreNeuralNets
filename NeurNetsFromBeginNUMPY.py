@@ -18,8 +18,6 @@ def Sigmoid(X):
     return S
 def SigmoidDer(X):
     shap = X.shape
-    lX = X.flatten()
-    S = np.zeros(shape=lX.shape)
     S = Sigmoid(X)*(1-Sigmoid(X))
     return S 
 def ReLU(X):
@@ -46,7 +44,112 @@ def Softmax(X):
     S = (z.T/z_).T #Simply dividing each batch by its z_[i]
     return S 
 
-class DenseLayer:
+class Dense:
+    def __init__(self, size, activation = 'linear', optional_alpha = 0):
+        self.output_size = size
+        self.activation = activation
+        self.optional_alpha = optional_alpha
+        self.isTrainable = True
+        self.batch_size = 0
+        
+    def Compile(self, input_size):
+        self.input_size = input_size
+        self.weights = np.random.randn(self.output_size,self.input_size)
+        #self.biases = np.random.randn(1,self.output_size)
+        #For ReLU use below
+        self.biases = np.zeros((1,self.output_size))
+
+    def Forward(self, inputs):
+        '''inputs->outputs'''
+        #Dense layer only accepts 2 ranked tensors
+        if len(inputs.shape) > 2:
+            raise Exception("Wrong input shape for Dense!")
+        self.remInputs = inputs
+        self.batch_size = inputs.shape[0]
+        self.S = inputs @ self.weights.T + np.tile(self.biases,(self.batch_size,1))
+        match self.activation:
+            case 'linear':
+                self.Y = self.S.copy()
+            case 'sigmoid':
+                self.Y = Sigmoid(self.S)
+            case 'relu':
+                self.Y = ReLU(self.S)
+            case 'leaky_relu':
+                self.Y = LeakyReLU(self.S, self.optional_alpha)
+            case 'softmax':
+                self.Y = Softmax(self.S)
+        return self.Y
+    def SetLastDelta_Backward(self, error_delta):
+        '''Sets the delta into the layer (when it is first in model)'''
+        #This is [n-1] layer
+        match self.activation:
+            case 'linear':
+                derv = np.ones(shape=self.S.shape)
+            case 'sigmoid':
+                derv = SigmoidDer(self.S)
+            case 'relu':
+                derv = ReLUDer(self.S)
+            case 'leaky_relu':
+                derv = LeakyReLUDer(self.S, self.optional_alpha)
+            case 'softmax':
+                derv = np.ones(shape=self.S.shape)
+        self.delta = derv * error_delta #The delta of the this layer 
+    def Backward(self, next_S, next_activation, optional_alpha = 0):
+        '''Calculates the delta for the layer in back'''
+        #This is [k] layer. Next_inputs must be S, not Y
+        match next_activation:
+            case 'linear':
+                derv = np.ones(shape=next_S.shape)
+            case 'sigmoid':
+                derv = SigmoidDer(next_S)
+            case 'relu':
+                derv = ReLUDer(next_S)                  
+            case 'leaky_relu':
+                derv = LeakyReLUDer(next_S, optional_alpha)
+            case 'softmax':
+                derv = np.ones(shape=next_S.shape)
+        wage_l_delta_prod =  self.delta @ self.weights
+        next_delta = derv * wage_l_delta_prod #The delta of [k-1] layer
+        return next_delta
+    def Learn(self, learning_rate):
+        if self.delta is None:
+            raise Exception("THERE IS NO DELTA! Use Backward before Learn")
+        else:
+            #We sum both the delta for biases and the delta for weights in the whole batch
+            summed_delta = self.delta.sum(axis=0, keepdims=True)
+            deltaWeight = np.zeros(shape=(self.input_size,self.delta.shape[1]))
+            for i in range(self.batch_size):
+                #This loop calculates the weight_delta matrices for all inputs in batch multiplied by all deltas in batch
+                #We expand dims since those are vectors, and we need matrices
+                deltaWeight = deltaWeight + np.expand_dims(self.remInputs[i,:],axis=0).T@np.expand_dims(self.delta[i,:],axis=0)
+            #Updating weights and biases 
+            wT = self.weights.T - learning_rate*deltaWeight
+            self.weights = wT.T
+            self.biases = self.biases - learning_rate*summed_delta
+class Conv2D:
+    '''
+    input_size = 3
+    kernel_size = 2
+    output_size = 2
+    padding = 1
+    strides = 2
+    #input_size - rozmiar wejscia bez padding
+    kernel = np.full((kernel_size,kernel_size),'',dtype='U10')
+    modified_kernel = np.full((output_size*output_size,(input_size+2*padding)*(input_size+2*padding)),'',dtype='U10')
+    for c in range(kernel_size):
+        for w in range(kernel_size):
+            kernel[c,w] = 'w' + str(c) + str(w)
+    print(kernel)
+    for i in range(output_size):
+        for j in range(output_size):
+            small_kernel = np.full((input_size+2*padding,input_size+2*padding),'',dtype='U10')
+            small_kernel[strides*i:kernel_size + strides*i,strides*j:kernel_size + strides*j] = kernel
+            print(small_kernel)
+            small_kernel = small_kernel.flatten()
+            modified_kernel[i*output_size+j,:] = small_kernel
+    print(modified_kernel)
+    f = kernel.flatten()
+    '''
     def __init__(self, size, activation = 'linear', optional_alpha = 0):
         self.output_size = size
         self.activation = activation
@@ -126,6 +229,7 @@ class DenseLayer:
             self.weights = wT.T
             self.biases = self.biases - learning_rate*summed_delta
             #print(self.delta)
+'''
 class LayerNormalization:
     def __init__(self):
         self.isTrainable = True
@@ -169,6 +273,7 @@ class LayerNormalization:
             #print('H',summed_delta_gammas)
             self.gammas = self.gammas - learning_rate*summed_delta_gammas
             self.biases = self.biases - learning_rate*summed_delta
+'''
 class BatchNormalization:
     #Jest ok
     def __init__(self):
@@ -184,6 +289,8 @@ class BatchNormalization:
         self.running_means = np.zeros(shape=(self.size,))
         self.running_vars = np.ones(shape=(self.size,))
         self.momentum = 0.1
+
+
         self.S = None
 
     def Forward(self, inputs):
@@ -357,7 +464,7 @@ class Model:
 
         self.layers[self.size-1].SetLastDelta_Backward(er_delta)
         for i in range(self.size-1, 0,-1):
-            if isinstance(self.layers[i], DenseLayer):
+            if isinstance(self.layers[i], Dense):
                 try:
                     self.layers[i-1].delta = self.layers[i].Backward(self.layers[i-1].S, self.layers[i-1].activation, self.layers[i-1].optional_alpha)
                 except AttributeError:
@@ -365,8 +472,6 @@ class Model:
                         self.layers[i-1].delta = self.layers[i].Backward(self.layers[i-1].S, 'linear', self.layers[i-1].optional_alpha)
                     except AttributeError:
                         self.layers[i-1].delta = self.layers[i].Backward(self.layers[i-1].S, 'linear', 0)
-            if isinstance(self.layers[i], LayerNormalization):
-                self.layers[i-1].delta = self.layers[i].Backward()
             if isinstance(self.layers[i], BatchNormalization):
                 self.layers[i-1].delta = self.layers[i].Backward()
             if isinstance(self.layers[i], Sigmoid_L):

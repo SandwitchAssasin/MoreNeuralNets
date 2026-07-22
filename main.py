@@ -12,14 +12,14 @@ databs = [[(4,2),1],[(1,1),1],[(1.5,1.6),1],[(1.2,1.4),1],
 for dt in databs:
     dt[1] = [dt[1]]
 
-l1_2 = NeurNFN.DenseLayer(10,'sigmoid')
-l2_2 = NeurNFN.DenseLayer(15,'linear')
+l1_2 = NeurNFN.Dense(10,'sigmoid')
+l2_2 = NeurNFN.Dense(15,'linear')
 lds = NeurNFN.BatchNormalization()
 ld2s = NeurNFN.LeakyReLU_L(0.1)
-l3_2 = NeurNFN.DenseLayer(15,'linear')
+l3_2 = NeurNFN.Dense(15,'linear')
 ld = NeurNFN.BatchNormalization()
 ld2 = NeurNFN.LeakyReLU_L(0.1)
-l4_2 = NeurNFN.DenseLayer(1,'sigmoid')
+l4_2 = NeurNFN.Dense(1,'sigmoid')
 lay = [l1_2,l2_2,lds,ld2s,l3_2,ld,ld2, l4_2]
 
 m = NeurNFN.Model(2, lay)
@@ -83,27 +83,27 @@ for d in data:
 
 #Mozliwe ze dziala, tylko po prostu nie potrafi poprawnie predictowac
 
-l1_2 = NeurNFN.DenseLayer(30,'linear')
+l1_2 = NeurNFN.Dense(30,'linear')
 ld1 = NeurNFN.BatchNormalization()
 ld1p = NeurNFN.LeakyReLU_L(0.1)
-l2_2 = NeurNFN.DenseLayer(70,'linear')
+l2_2 = NeurNFN.Dense(70,'linear')
 ld2 = NeurNFN.BatchNormalization()
 ld2p = NeurNFN.LeakyReLU_L(0.1)
-l3_2 = NeurNFN.DenseLayer(70,'linear')
+l3_2 = NeurNFN.Dense(70,'linear')
 ld3 = NeurNFN.BatchNormalization()
 ld3p = NeurNFN.LeakyReLU_L(0.1)
-l4_2 = NeurNFN.DenseLayer(3,'softmax')
+l4_2 = NeurNFN.Dense(3,'softmax')
 
 lay = [l1_2,ld1,ld1p,l2_2,ld2,ld2p,l3_2,ld3,ld3p,l4_2]
 
 '''
-l1_2 = NeurNFN.DenseLayer(15,'linear',0.1)
+l1_2 = NeurNFN.Dense(15,'linear',0.1)
 ld21 = NeurNFN.LeakyReLU_L(0.1)
-l2_2 = NeurNFN.DenseLayer(17,'linear',0.1)
+l2_2 = NeurNFN.Dense(17,'linear',0.1)
 ld22 = NeurNFN.LeakyReLU_L(0.1)
-l3_2 = NeurNFN.DenseLayer(15,'linear',0.1)
+l3_2 = NeurNFN.Dense(15,'linear',0.1)
 ld23 = NeurNFN.LeakyReLU_L(0.1)
-l4_2 = NeurNFN.DenseLayer(3,'softmax')
+l4_2 = NeurNFN.Dense(3,'softmax')
 lay = [l1_2,ld21,l2_2,ld22,l3_2,ld23,l4_2]
 '''
 print('KETE', len(dataTrain))
