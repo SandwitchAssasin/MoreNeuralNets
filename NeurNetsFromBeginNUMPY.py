@@ -53,6 +53,9 @@ class Dense:
         self.batch_size = 0
         
     def Compile(self, input_size):
+        #Dense layer only accepts 1 ranked tensors (input_size does not count batch_size)
+        if len(input_size.shape) != 1:
+            raise Exception("Wrong input shape for Dense!")
         self.input_size = input_size
         self.weights = np.random.randn(self.output_size,self.input_size)
         #self.biases = np.random.randn(1,self.output_size)
@@ -61,9 +64,6 @@ class Dense:
 
     def Forward(self, inputs):
         '''inputs->outputs'''
-        #Dense layer only accepts 2 ranked tensors
-        if len(inputs.shape) > 2:
-            raise Exception("Wrong input shape for Dense!")
         self.remInputs = inputs
         self.batch_size = inputs.shape[0]
         self.S = inputs @ self.weights.T + np.tile(self.biases,(self.batch_size,1))
@@ -128,46 +128,105 @@ class Dense:
             self.biases = self.biases - learning_rate*summed_delta
 class Conv2D:
     '''
-    input_size = 3
-    kernel_size = 2
-    output_size = 2
+
+    kernels = 10
+    channels = 3
+
+    input_size = 5
+    kernel_size = 4
     padding = 1
-    strides = 2
+    strides = 3
+
+    output_size = math.floor((input_size + 2*padding - kernel_size)/strides) + 1
+
     #input_size - rozmiar wejscia bez padding
-    kernel = np.full((kernel_size,kernel_size),'',dtype='U10')
-    modified_kernel = np.full((output_size*output_size,(input_size+2*padding)*(input_size+2*padding)),'',dtype='U10')
+    #wpierw robimy template duzej macierzy dense
+    templ_kernel = np.full((kernel_size,kernel_size),'',dtype='U10') 
+
+    templ_modified_kernel = np.full((output_size*output_size,(input_size+2*padding)*(input_size+2*padding)),'',dtype='U10') 
     for c in range(kernel_size):
         for w in range(kernel_size):
-            kernel[c,w] = 'w' + str(c) + str(w)
-    print(kernel)
+            templ_kernel[c,w] = 'w' + str(c * kernel_size + w)
     for i in range(output_size):
         for j in range(output_size):
-            small_kernel = np.full((input_size+2*padding,input_size+2*padding),'',dtype='U10')
-            small_kernel[strides*i:kernel_size + strides*i,strides*j:kernel_size + strides*j] = kernel
-            print(small_kernel)
-            small_kernel = small_kernel.flatten()
-            modified_kernel[i*output_size+j,:] = small_kernel
-    print(modified_kernel)
-    f = kernel.flatten()
+            templ_small_kernel = np.full((input_size+2*padding,input_size+2*padding),'',dtype='U10')
+            templ_small_kernel[strides*i:kernel_size + strides*i,strides*j:kernel_size + strides*j] = templ_kernel
+            print(templ_small_kernel)
+            templ_small_kernel = templ_small_kernel.flatten()
+            templ_modified_kernel[i*output_size+j,:] = templ_small_kernel
+
+    kernel = np.random.randint(0,2,(kernel_size,kernel_size))
+
+    curr_mod_kernel = templ_modified_kernel.copy()
+    for c in range(kernel_size):
+        for w in range(kernel_size):
+            curr_mod_kernel[curr_mod_kernel == 'w' + str(c * kernel_size + w)] = str(kernel[c,w])
+    curr_mod_kernel[curr_mod_kernel == ''] = str(0)
+    curr_mod_kernel = curr_mod_kernel.astype(float)
+    print(curr_mod_kernel)
+
     '''
-    def __init__(self, size, activation = 'linear', optional_alpha = 0):
-        self.output_size = size
+    def __init__(self, num_of_kernels, kernel_size, padding, strides, activation = 'linear', optional_alpha = 0):
+        self.kernel_size = kernel_size
+        self.num_of_kernels = num_of_kernels
+        self.padding = padding
+        self.strides = strides
         self.activation = activation
         self.optional_alpha = optional_alpha
         self.isTrainable = True
         self.batch_size = 0
         
-    def Compile(self, input_size):
-        self.input_size = input_size
-        self.weights = np.random.randn(self.output_size,self.input_size)
-        #self.biases = np.random.randn(1,self.output_size)
-        #For ReLU use below
-        self.biases = np.zeros((1,self.output_size))
+    def Compile(self, input_shape):
+        #Conv2D layer only accepts 3 ranked tensors (input_size does not count batch_size)
+        if len(input_shape.shape) != 3:
+            raise Exception("Wrong input shape for Dense!")
+        self.input_size = input_shape.shape[0]
+        self.channels = input_shape.shape[2]
+        self.output_size = math.floor((self.input_size + 2*self.padding - self.kernel_size)/self.strides) + 1
+
+        #input_size - size of input - width of an input image
+        #first we do a template of modified kernel so it will be like weight matrix for dense
+        #templ_kernel - a kernel with strings like 'w00', 'w01' etc.
+        #templ_small_kernel - a input-sized matrix of zeroes with one templ_kernel on itself (as in convolutions)
+        #templ_modified_kernel - a dense-like weight matrix with strings, as it is just a template
+        #templates are done, so the calculations can be done much faster (I think so)
+        templ_kernel = np.full((self.kernel_size,self.kernel_size),'',dtype='U10') 
+
+        self.templ_modified_kernel = np.full((self.output_size*self.output_size,(self.input_size+2*self.padding)*(self.input_size+2*self.padding)),'',dtype='U10') 
+        for c in range(self.kernel_size):
+            for w in range(self.kernel_size):
+                templ_kernel[c,w] = 'w' + str(c * self.kernel_size + w)
+        for i in range(self.output_size):
+            for j in range(self.output_size):
+                templ_small_kernel = np.full((self.input_size+2*self.padding,self.input_size+2*self.padding),'',dtype='U10')
+                templ_small_kernel[self.strides*i:self.kernel_size + self.strides*i,self.strides*j:self.kernel_size + self.strides*j] = templ_kernel
+                print(templ_small_kernel)
+                templ_small_kernel = templ_small_kernel.flatten()
+                self.templ_modified_kernel[i*self.output_size+j,:] = templ_small_kernel
+
+        self.kernels = np.randn((self.num_of_kernels,self.channels,self.kernel_size,self.kernel_size))
+        self.biases = np.zeros(self.output_size)
 
     def Forward(self, inputs):
         '''inputs->outputs'''
         self.remInputs = inputs
         self.batch_size = inputs.shape[0]
+        for img_num in range(self.batch_size):
+            output_img_total = np.zeros(self.kernel_size,self.kernel_size,self.num_of_kernels)
+            for k in range(self.num_of_kernels):
+                for c in range(self.channels):
+                    tmp_img_1d = inputs[img_num,:,:,c]
+                    tmp_img_1d = tmp_img_1d.flatten()
+                    curr_kernel_1_channel = self.kernels[]
+
+                    curr_mod_kernel = self.templ_modified_kernel.copy()
+                    for c in range(self.kernel_size):
+                        for w in range(self.kernel_size):
+                            curr_mod_kernel[curr_mod_kernel == 'w' + str(c * self.kernel_size + w)] = str(curr_kernel_1_channel[c,w])
+                    curr_mod_kernel[curr_mod_kernel == ''] = str(0)
+                    curr_mod_kernel = curr_mod_kernel.astype(float)
+                output_img_1d = 
+                output_img = np.reshape(output_img_1d,shape=(self.output_size,self.output_size))
         self.S = inputs @ self.weights.T + np.tile(self.biases,(self.batch_size,1))
         match self.activation:
             case 'linear':
@@ -471,7 +530,11 @@ class Model:
                     try:
                         self.layers[i-1].delta = self.layers[i].Backward(self.layers[i-1].S, 'linear', self.layers[i-1].optional_alpha)
                     except AttributeError:
-                        self.layers[i-1].delta = self.layers[i].Backward(self.layers[i-1].S, 'linear', 0)
+                        try:
+                            self.layers[i-1].delta = self.layers[i].Backward(self.layers[i-1].S, 'linear', 0)
+                        except AttributeError:
+                            if isinstance(self.layers[i-1], Conv2D):
+                                raise Exception('You should not use Dense after Conv2D, use Flatten layer')
             if isinstance(self.layers[i], BatchNormalization):
                 self.layers[i-1].delta = self.layers[i].Backward()
             if isinstance(self.layers[i], Sigmoid_L):
