@@ -54,8 +54,6 @@ class Dense:
         
     def Compile(self, input_size):
         #Dense layer only accepts 1 ranked tensors (input_size does not count batch_size)
-        if len(input_size.shape) != 1:
-            raise Exception("Wrong input shape for Dense!")
         self.input_size = input_size
         self.weights = np.random.randn(self.output_size,self.input_size)
         #self.biases = np.random.randn(1,self.output_size)
@@ -82,90 +80,38 @@ class Dense:
     def SetLastDelta_Backward(self, error_delta):
         '''Sets the delta into the layer (when it is first in model)'''
         #This is [n-1] layer
-        match self.activation:
-            case 'linear':
-                derv = np.ones(shape=self.S.shape)
-            case 'sigmoid':
-                derv = SigmoidDer(self.S)
-            case 'relu':
-                derv = ReLUDer(self.S)
-            case 'leaky_relu':
-                derv = LeakyReLUDer(self.S, self.optional_alpha)
-            case 'softmax':
-                derv = np.ones(shape=self.S.shape)
-        self.delta = derv * error_delta #The delta of the this layer 
-    def Backward(self, next_S, next_activation, optional_alpha = 0):
+        self.delta = error_delta
+    def Backward(self):
         '''Calculates the delta for the layer in back'''
         #This is [k] layer. Next_inputs must be S, not Y
-        match next_activation:
-            case 'linear':
-                derv = np.ones(shape=next_S.shape)
-            case 'sigmoid':
-                derv = SigmoidDer(next_S)
-            case 'relu':
-                derv = ReLUDer(next_S)                  
-            case 'leaky_relu':
-                derv = LeakyReLUDer(next_S, optional_alpha)
-            case 'softmax':
-                derv = np.ones(shape=next_S.shape)
         wage_l_delta_prod =  self.delta @ self.weights
-        next_delta = derv * wage_l_delta_prod #The delta of [k-1] layer
+        next_delta = wage_l_delta_prod #The delta of [k-1] layer
         return next_delta
     def Learn(self, learning_rate):
         if self.delta is None:
             raise Exception("THERE IS NO DELTA! Use Backward before Learn")
         else:
+            match self.activation:
+                case 'linear':
+                    derv = np.ones(shape=self.S.shape)
+                case 'sigmoid':
+                    derv = SigmoidDer(self.S)
+                case 'relu':
+                    derv = ReLUDer(self.S)
+                case 'leaky_relu':
+                    derv = LeakyReLUDer(self.S, self.optional_alpha)
+                case 'softmax':
+                    derv = np.ones(shape=self.S.shape)
+            self.learn_delta = derv * self.delta
             #We sum both the delta for biases and the delta for weights in the whole batch
-            summed_delta = self.delta.sum(axis=0, keepdims=True)
+            summed_delta = self.learn_delta.sum(axis=0, keepdims=True)
             deltaWeight = np.zeros(shape=(self.input_size,self.delta.shape[1]))
-            for i in range(self.batch_size):
-                #This loop calculates the weight_delta matrices for all inputs in batch multiplied by all deltas in batch
-                #We expand dims since those are vectors, and we need matrices
-                deltaWeight = deltaWeight + np.expand_dims(self.remInputs[i,:],axis=0).T@np.expand_dims(self.delta[i,:],axis=0)
+            deltaWeight = deltaWeight + self.remInputs.T@self.learn_delta
             #Updating weights and biases 
             wT = self.weights.T - learning_rate*deltaWeight
             self.weights = wT.T
             self.biases = self.biases - learning_rate*summed_delta
 class Conv2D:
-    '''
-
-    kernels = 10
-    channels = 3
-
-    input_size = 5
-    kernel_size = 4
-    padding = 1
-    strides = 3
-
-    output_size = math.floor((input_size + 2*padding - kernel_size)/strides) + 1
-
-    #input_size - rozmiar wejscia bez padding
-    #wpierw robimy template duzej macierzy dense
-    templ_kernel = np.full((kernel_size,kernel_size),'',dtype='U10') 
-
-    templ_modified_kernel = np.full((output_size*output_size,(input_size+2*padding)*(input_size+2*padding)),'',dtype='U10') 
-    for c in range(kernel_size):
-        for w in range(kernel_size):
-            templ_kernel[c,w] = 'w' + str(c * kernel_size + w)
-    for i in range(output_size):
-        for j in range(output_size):
-            templ_small_kernel = np.full((input_size+2*padding,input_size+2*padding),'',dtype='U10')
-            templ_small_kernel[strides*i:kernel_size + strides*i,strides*j:kernel_size + strides*j] = templ_kernel
-            print(templ_small_kernel)
-            templ_small_kernel = templ_small_kernel.flatten()
-            templ_modified_kernel[i*output_size+j,:] = templ_small_kernel
-
-    kernel = np.random.randint(0,2,(kernel_size,kernel_size))
-
-    curr_mod_kernel = templ_modified_kernel.copy()
-    for c in range(kernel_size):
-        for w in range(kernel_size):
-            curr_mod_kernel[curr_mod_kernel == 'w' + str(c * kernel_size + w)] = str(kernel[c,w])
-    curr_mod_kernel[curr_mod_kernel == ''] = str(0)
-    curr_mod_kernel = curr_mod_kernel.astype(float)
-    print(curr_mod_kernel)
-
-    '''
     def __init__(self, num_of_kernels, kernel_size, padding, strides, activation = 'linear', optional_alpha = 0):
         self.kernel_size = kernel_size
         self.num_of_kernels = num_of_kernels
@@ -205,19 +151,21 @@ class Conv2D:
                 self.templ_modified_kernel[i*self.output_size+j,:] = templ_small_kernel
 
         self.kernels = np.randn((self.num_of_kernels,self.channels,self.kernel_size,self.kernel_size))
-        self.biases = np.zeros(self.output_size)
+        self.biases = np.zeros(self.num_of_kernels,self.kernel_size,self.kernel_size)
 
     def Forward(self, inputs):
         '''inputs->outputs'''
         self.remInputs = inputs
         self.batch_size = inputs.shape[0]
+        self.output = np.zeros(self.batch_size,self.kernel_size,self.kernel_size,self.num_of_kernels)
         for img_num in range(self.batch_size):
-            output_img_total = np.zeros(self.kernel_size,self.kernel_size,self.num_of_kernels)
+            output_img_total = np.zeros(self.kernel_size,self.kernel_size,self.num_of_kernels) #The entire image with all new channels 
             for k in range(self.num_of_kernels):
+                output_img = np.zeros(self.kernel_size,self.kernel_size) 
                 for c in range(self.channels):
                     tmp_img_1d = inputs[img_num,:,:,c]
                     tmp_img_1d = tmp_img_1d.flatten()
-                    curr_kernel_1_channel = self.kernels[]
+                    curr_kernel_1_channel = self.kernels[k,c,:,:]
 
                     curr_mod_kernel = self.templ_modified_kernel.copy()
                     for c in range(self.kernel_size):
@@ -225,12 +173,17 @@ class Conv2D:
                             curr_mod_kernel[curr_mod_kernel == 'w' + str(c * self.kernel_size + w)] = str(curr_kernel_1_channel[c,w])
                     curr_mod_kernel[curr_mod_kernel == ''] = str(0)
                     curr_mod_kernel = curr_mod_kernel.astype(float)
-                output_img_1d = 
-                output_img = np.reshape(output_img_1d,shape=(self.output_size,self.output_size))
-        self.S = inputs @ self.weights.T + np.tile(self.biases,(self.batch_size,1))
+                    one_channel_output_image_1d = curr_mod_kernel @ tmp_img_1d
+                    one_channel_output_image = np.reshape(one_channel_output_image_1d, shape=(self.output_size,self.output_size))
+                    output_img = output_img + one_channel_output_image
+                output_img_total[:,:,k] = output_img.copy()
+            self.output[img_num,:,:,:] = output_img_total.copy()
+        for b in range(self.num_of_kernels):
+            self.output[:,:,:,b] += self.biases[b,:,:]
+        self.S = self.output.copy()
         match self.activation:
             case 'linear':
-                self.Y = self.S.copy()
+                self.Y = self.S
             case 'sigmoid':
                 self.Y = Sigmoid(self.S)
             case 'relu':
@@ -243,51 +196,64 @@ class Conv2D:
     def SetLastDelta_Backward(self, error_delta):
         '''Sets the delta into the layer (when it is first in model)'''
         #This is [n-1] layer
-        match self.activation:
-            case 'linear':
-                derv = np.ones(shape=self.S.shape)
-            case 'sigmoid':
-                derv = SigmoidDer(self.S)
-            case 'relu':
-                derv = ReLUDer(self.S)
-            case 'leaky_relu':
-                derv = LeakyReLUDer(self.S, self.optional_alpha)
-            case 'softmax':
-                derv = np.ones(shape=self.S.shape)
-        self.delta = derv * error_delta #The delta of the this layer 
-    def Backward(self, next_S, next_activation, optional_alpha = 0):
+        self.delta = error_delta
+    def Backward(self):
         '''Calculates the delta for the layer in back'''
         #This is [k] layer. Next_inputs must be S, not Y
-        match next_activation:
-            case 'linear':
-                derv = np.ones(shape=next_S.shape)
-            case 'sigmoid':
-                derv = SigmoidDer(next_S)
-            case 'relu':
-                derv = ReLUDer(next_S)                  
-            case 'leaky_relu':
-                derv = LeakyReLUDer(next_S, optional_alpha)
-            case 'softmax':
-                derv = np.ones(shape=next_S.shape)
-        wage_l_delta_prod =  self.delta @ self.weights
-        next_delta = derv * wage_l_delta_prod #The delta of [k-1] layer
+        next_delta = np.zeros(self.batch_size,self.input_size,self.input_size,self.channels)
+        for img_num in range(self.batch_size):
+            for nc in range(self.num_of_kernels):
+                curr_nc_delta = self.delta[img_num,:,:,nc]
+                curr_nc_delta = np.expnad_dims(curr_nc_delta.flatten(),axis=1)
+                for c in range(self.channels):
+                    curr_kernel_1_channel = self.kernels[nc,c,:,:]
+                    curr_mod_kernel = self.templ_modified_kernel.copy()
+                    for i in range(self.kernel_size):
+                        for w in range(self.kernel_size):
+                            curr_mod_kernel[curr_mod_kernel == 'w' + str(i * self.kernel_size + w)] = str(curr_kernel_1_channel[i,w])
+                    curr_mod_kernel[curr_mod_kernel == ''] = str(0)
+                    curr_mod_kernel = curr_mod_kernel.astype(float)
+
+                    curr_nc_next_delta_one_channel_flattened = curr_mod_kernel.T @ curr_nc_delta
+                    curr_nc_next_delta_one_channel = np.reshape(curr_nc_next_delta_one_channel_flattened,shape=(self.input_size,self.input_size))
+                    next_delta[img_num,:,:,nc] += curr_nc_next_delta_one_channel
         return next_delta
     def Learn(self, learning_rate):
         if self.delta is None:
             raise Exception("THERE IS NO DELTA! Use Backward before Learn")
         else:
-            #We sum both the delta for biases and the delta for weights in the whole batch
-            summed_delta = self.delta.sum(axis=0, keepdims=True)
-            deltaWeight = np.zeros(shape=(self.input_size,self.delta.shape[1]))
-            for i in range(self.batch_size):
-                #This loop calculates the weight_delta matrices for all inputs in batch multiplied by all deltas in batch
-                #We expand dims since those are vectors, and we need matrices
-                deltaWeight = deltaWeight + np.expand_dims(self.remInputs[i,:],axis=0).T@np.expand_dims(self.delta[i,:],axis=0)
-            #Updating weights and biases 
-            wT = self.weights.T - learning_rate*deltaWeight
-            self.weights = wT.T
+            match self.activation:
+                case 'linear':
+                    derv = np.ones(shape=self.S.shape)
+                case 'sigmoid':
+                    derv = SigmoidDer(self.S)
+                case 'relu':
+                    derv = ReLUDer(self.S)
+                case 'leaky_relu':
+                    derv = LeakyReLUDer(self.S, self.optional_alpha)
+                case 'softmax':
+                    derv = np.ones(shape=self.S.shape)
+            self.learn_delta = derv * self.delta
+            summed_delta = self.learn_delta.sum(axis=0) #shape = (self.num_of_kernels,self.kernel_size,self.kernel_size)
+            summed_inputs = np.sum(self.remInputs,axis=0)
+
+            kernel_delta = np.zeros((self.num_of_kernels,self.channels,self.kernel_size,self.kernel_size))
+            for k in range(self.num_of_kernels):
+                one_kernel_delta = self.summed_delta[k,:,:]
+                one_kernel_delta = np.expand_dims(one_kernel_delta.flatten(),axis=1)
+                for c in range(self.channels):
+                    flattened_one_channel_input = np.expand_dims(summed_inputs[:,:,c].flatten(),axis=1)
+                    curr_mod_number_kernel = one_kernel_delta@flattened_one_channel_input
+
+                    real_kernel_delta = np.zeros(shape=(self.kernel_size,self.kernel_size))
+                    for i in range(self.kernel_size):
+                        for w in range(self.kernel_size):
+                            real_kernel_delta[i,w] += np.sum(curr_mod_number_kernel[self.templ_modified_kernel == 'w' + str(i * self.kernel_size + w)])
+
+                    kernel_delta[k,c,:,:] = real_kernel_delta
+            #Updating weights and biases
+            self.kernels = self.kernels - learning_rate*kernel_delta
             self.biases = self.biases - learning_rate*summed_delta
-            #print(self.delta)
 '''
 class LayerNormalization:
     def __init__(self):
@@ -508,42 +474,25 @@ class Model:
         #Error---------------------------------------
         
         #SquaredError
-        '''
+        
         er_delta = 2*(predictions_batch - batch_real_values_matrix) #Error delta is (output_size, batch_size)
         
         er_delta = er_delta
-        '''
         
+        '''
         #Categorical cross-entropy WITH SOFTMAX ON LAST LAYER
         if(self.layers[-1].activation != 'softmax'):
             raise Exception('You are using cat. cross-entropy with no softmax on the last layer. USE SOFTMAX PLEASE')
         er_delta = predictions_batch - batch_real_values_matrix #Error delta
-        
+        '''
         #Calculating deltas of layers----------------
 
         self.layers[self.size-1].SetLastDelta_Backward(er_delta)
         for i in range(self.size-1, 0,-1):
-            if isinstance(self.layers[i], Dense):
-                try:
-                    self.layers[i-1].delta = self.layers[i].Backward(self.layers[i-1].S, self.layers[i-1].activation, self.layers[i-1].optional_alpha)
-                except AttributeError:
-                    try:
-                        self.layers[i-1].delta = self.layers[i].Backward(self.layers[i-1].S, 'linear', self.layers[i-1].optional_alpha)
-                    except AttributeError:
-                        try:
-                            self.layers[i-1].delta = self.layers[i].Backward(self.layers[i-1].S, 'linear', 0)
-                        except AttributeError:
-                            if isinstance(self.layers[i-1], Conv2D):
-                                raise Exception('You should not use Dense after Conv2D, use Flatten layer')
-            if isinstance(self.layers[i], BatchNormalization):
+            if isinstance(self.layers[i-1], Conv2D):
+                raise Exception('You should not use Dense after Conv2D, use Flatten layer')
+            else:
                 self.layers[i-1].delta = self.layers[i].Backward()
-            if isinstance(self.layers[i], Sigmoid_L):
-                self.layers[i-1].delta = self.layers[i].Backward()
-            if isinstance(self.layers[i], ReLU_L):
-                self.layers[i-1].delta = self.layers[i].Backward()
-            if isinstance(self.layers[i], LeakyReLU_L):
-                self.layers[i-1].delta = self.layers[i].Backward()
-            #print(self.layers[i-1].delta)
     def Learn(self, learning_rate):
         '''Using deltas to learn the net'''
         if(not self.isCompiled):
