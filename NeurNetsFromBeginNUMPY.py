@@ -53,7 +53,7 @@ class Dense:
         
     def Compile(self, input_size):
         #Dense layer only accepts 1 ranked tensors (input_size does not count batch_size)
-        if len(input_size) != 1:
+        if not isinstance(input_size,int):
             print(input_size)
             raise Exception('Zly input size')
         self.input_size = input_size
@@ -309,7 +309,7 @@ class BatchNormalization:
         self.isTraining = True
     def Compile(self, input_size):
         self.isConv = False
-        if len(input_size) == 3:
+        if not isinstance(input_size,int):
             self.isConv = True
         self.size = input_size
         if self.isConv:
@@ -429,8 +429,8 @@ class Flatten:
         self.batch_size = 0
     def Compile(self, input_size):
         self.size = input_size
-        self.output_size = self.batch_size,self.input_shape[0]*self.input_shape[1]*self.input_shape[2] #The same as size, just different names
         self.input_shape = self.size
+        self.output_size = self.input_shape[0]*self.input_shape[1]*self.input_shape[2] #The same as size, just different names
         self.S = None
     def Forward(self, inputs):
         self.remInputs = inputs
@@ -451,6 +451,9 @@ class Model:
         self.isCompiled = False
         self.layer_outputSizes = []
         self.batch_size = batch_size    
+        self.isConv = False
+        if not isinstance(input_size,int):
+            self.isConv = True
     def Compile(self,batch_size):
         '''Compiles the whole model'''
         for i in range(0, self.size):
@@ -471,10 +474,10 @@ class Model:
             raise Exception('Compile the model before using it!')
         #For inputs that are vectors, we make them into matrices (n,1)
         input_data = np.array(inputs)
-        if(len(input_data.shape) == 1):
+        if(len(input_data.shape) == 1) and not self.isConv:
             input_data = np.expand_dims(input_data,axis=0)
 
-        if input_data.shape[1] != self.input_size:
+        if input_data.shape[1] != self.input_size and not self.isConv:
             raise Exception("Wrong input size!")
         x = input_data
         for i in range(0, self.size):
