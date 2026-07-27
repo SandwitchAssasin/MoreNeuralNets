@@ -119,7 +119,6 @@ if PROJECT_NUMBER == 2:
     test_images = np.expand_dims(test_images,axis=3)
     test_images = test_images / 255
     
-    lent = len(train_labels)
     train_labels = utils.turn_int_into_one_hot(train_labels)
     dataTrain = []
     for t in range(len(train_labels)):
@@ -128,16 +127,24 @@ if PROJECT_NUMBER == 2:
         dataline.append(train_labels[t])
         dataTrain.append(dataline)
         print(t)
-    print(dataTrain[0])
+    test_labels = utils.turn_int_into_one_hot(test_labels)
+    dataTest = []
+    for t in range(len(test_labels)):
+        dataline = []
+        dataline.append(test_images[t])
+        dataline.append(test_labels[t])
+        dataTest.append(dataline)
+        print(t)
+    print('aaa')
 
     lf = NeurNFN.Flatten()
-    l1_2 = NeurNFN.Dense(30,'linear')
+    l1_2 = NeurNFN.Dense(200,'linear')
     ld1 = NeurNFN.BatchNormalization()
     ld1p = NeurNFN.LeakyReLU_L(0.1)
-    l2_2 = NeurNFN.Dense(70,'linear')
+    l2_2 = NeurNFN.Dense(250,'linear')
     ld2 = NeurNFN.BatchNormalization()
     ld2p = NeurNFN.LeakyReLU_L(0.1)
-    l3_2 = NeurNFN.Dense(70,'linear')
+    l3_2 = NeurNFN.Dense(250,'linear')
     ld3 = NeurNFN.BatchNormalization()
     ld3p = NeurNFN.LeakyReLU_L(0.1)
     l4_2 = NeurNFN.Dense(10,'softmax')
@@ -145,7 +152,17 @@ if PROJECT_NUMBER == 2:
     lay = [lf,l1_2,ld1,ld1p,l2_2,ld2,ld2p,l3_2,ld3,ld3p,l4_2]
 
     m2 = NeurNFN.Model((28,28,1), lay)
-    m2.Train(dataTrain,epochs = 250, learning_rate = 0.002, batch_size=50)
+    m2.Train(dataTrain,epochs = 5, learning_rate = 0.002, batch_size=50)
+
+    ratio = 0
+    for d in dataTest:
+        predictions = m2.Forward(d[0])
+        real = d[1]
+        if np.argmax(real) == np.argmax(predictions):
+            ratio = ratio + 1
+    ratio = ratio / len(dataTest)
+    print('aaaaa')
+    print(len(dataTest))
     '''
     print(test_labels[0:16])
     print(test_images.shape)

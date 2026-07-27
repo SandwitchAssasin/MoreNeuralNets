@@ -55,7 +55,7 @@ class Dense:
         #Dense layer only accepts 1 ranked tensors (input_size does not count batch_size)
         if not isinstance(input_size,int):
             print(input_size)
-            raise Exception('Zly input size')
+            raise Exception('Wrong input size')
         self.input_size = input_size
         self.weights = np.random.randn(self.output_size,self.input_size)
         #self.biases = np.random.randn(1,self.output_size)
@@ -507,17 +507,17 @@ class Model:
         #Error---------------------------------------
         
         #SquaredError
-        
+        '''
         er_delta = 2*(predictions_batch - batch_real_values_matrix) #Error delta is (output_size, batch_size)
         
         er_delta = er_delta
-        
         '''
+        
         #Categorical cross-entropy WITH SOFTMAX ON LAST LAYER
         if(self.layers[-1].activation != 'softmax'):
             raise Exception('You are using cat. cross-entropy with no softmax on the last layer. USE SOFTMAX PLEASE')
         er_delta = predictions_batch - batch_real_values_matrix #Error delta
-        '''
+        
         #Calculating deltas of layers----------------
 
         self.layers[self.size-1].SetLastDelta_Backward(er_delta)
