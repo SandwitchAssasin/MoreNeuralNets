@@ -2,8 +2,9 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 import NeurNetsFromBeginNUMPY as NeurNFN
+import utils
 
-PROJECT_NUMBER = 0
+PROJECT_NUMBER = 2
 
 if PROJECT_NUMBER == 0:
     databs = [[(4,2),1],[(1,1),1],[(1.5,1.6),1],[(1.2,1.4),1],
@@ -108,4 +109,49 @@ if PROJECT_NUMBER == 1:
         real = d[1]
         print(irises_res[np.argmax(real)], ":", irises_res[np.argmax(predictions)], ":" , np.round(BladPredykcji(predictions,real),2))
 if PROJECT_NUMBER == 2:
-    pass
+    train_images = utils.read_idx('mnist/train-images.idx3-ubyte')
+    train_labels = utils.read_idx('mnist/train-labels.idx1-ubyte')
+    test_images = utils.read_idx('mnist/t10k-images.idx3-ubyte')
+    test_labels = utils.read_idx('mnist/t10k-labels.idx1-ubyte')
+
+    train_images = np.expand_dims(train_images,axis=3)
+    train_images = train_images / 255
+    test_images = np.expand_dims(test_images,axis=3)
+    test_images = test_images / 255
+    
+    lent = len(train_labels)
+    train_labels = utils.turn_int_into_one_hot(train_labels)
+    dataTrain = []
+    for t in range(len(train_labels)):
+        dataline = []
+        dataline.append(train_images[t])
+        dataline.append(train_labels[t])
+        dataTrain.append(dataline)
+        print(t)
+    print(dataTrain[0])
+
+    lf = NeurNFN.Flatten()
+    l1_2 = NeurNFN.Dense(30,'linear')
+    ld1 = NeurNFN.BatchNormalization()
+    ld1p = NeurNFN.LeakyReLU_L(0.1)
+    l2_2 = NeurNFN.Dense(70,'linear')
+    ld2 = NeurNFN.BatchNormalization()
+    ld2p = NeurNFN.LeakyReLU_L(0.1)
+    l3_2 = NeurNFN.Dense(70,'linear')
+    ld3 = NeurNFN.BatchNormalization()
+    ld3p = NeurNFN.LeakyReLU_L(0.1)
+    l4_2 = NeurNFN.Dense(10,'softmax')
+
+    lay = [lf,l1_2,ld1,ld1p,l2_2,ld2,ld2p,l3_2,ld3,ld3p,l4_2]
+
+    m2 = NeurNFN.Model((28,28,1), lay)
+    m2.Train(dataTrain,epochs = 250, learning_rate = 0.002, batch_size=50)
+    '''
+    print(test_labels[0:16])
+    print(test_images.shape)
+    for i in range(16):
+        plt.subplot(4,4,i+1)
+        plt.imshow(test_images[i],cmap = 'gray')
+        plt.axis('off')
+    plt.show()
+    '''

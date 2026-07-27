@@ -17,7 +17,6 @@ def Sigmoid(X):
     S = S.reshape(shap)
     return S
 def SigmoidDer(X):
-    shap = X.shape
     S = Sigmoid(X)*(1-Sigmoid(X))
     return S 
 def ReLU(X):
@@ -54,6 +53,9 @@ class Dense:
         
     def Compile(self, input_size):
         #Dense layer only accepts 1 ranked tensors (input_size does not count batch_size)
+        if len(input_size) != 1:
+            print(input_size)
+            raise Exception('Zly input size')
         self.input_size = input_size
         self.weights = np.random.randn(self.output_size,self.input_size)
         #self.biases = np.random.randn(1,self.output_size)
@@ -124,11 +126,12 @@ class Conv2D:
         
     def Compile(self, input_shape):
         #Conv2D layer only accepts 3 ranked tensors (input_size does not count batch_size)
-        if len(input_shape.shape) != 3:
+        if len(input_shape) != 3:
             raise Exception("Wrong input shape for Dense!")
         self.input_size = input_shape.shape[0]
         self.channels = input_shape.shape[2]
-        self.output_size = math.floor((self.input_size + 2*self.padding - self.kernel_size)/self.strides) + 1
+        self.output_size_1d = math.floor((self.input_size + 2*self.padding - self.kernel_size)/self.strides) + 1
+        self.output_size = [self.output_size_1d,self.output_size_1d,self.num_of_kernels]
 
         #input_size - size of input - width of an input image
         #first we do a template of modified kernel so it will be like weight matrix for dense
@@ -138,17 +141,17 @@ class Conv2D:
         #templates are done, so the calculations can be done much faster (I think so)
         templ_kernel = np.full((self.kernel_size,self.kernel_size),'',dtype='U10') 
 
-        self.templ_modified_kernel = np.full((self.output_size*self.output_size,(self.input_size+2*self.padding)*(self.input_size+2*self.padding)),'',dtype='U10') 
+        self.templ_modified_kernel = np.full((self.output_size_1d*self.output_size_1d,(self.input_size+2*self.padding)*(self.input_size+2*self.padding)),'',dtype='U10') 
         for c in range(self.kernel_size):
             for w in range(self.kernel_size):
                 templ_kernel[c,w] = 'w' + str(c * self.kernel_size + w)
-        for i in range(self.output_size):
-            for j in range(self.output_size):
+        for i in range(self.output_size_1d):
+            for j in range(self.output_size_1d):
                 templ_small_kernel = np.full((self.input_size+2*self.padding,self.input_size+2*self.padding),'',dtype='U10')
                 templ_small_kernel[self.strides*i:self.kernel_size + self.strides*i,self.strides*j:self.kernel_size + self.strides*j] = templ_kernel
                 print(templ_small_kernel)
                 templ_small_kernel = templ_small_kernel.flatten()
-                self.templ_modified_kernel[i*self.output_size+j,:] = templ_small_kernel
+                self.templ_modified_kernel[i*self.output_size_1d+j,:] = templ_small_kernel
 
         self.kernels = np.randn((self.num_of_kernels,self.channels,self.kernel_size,self.kernel_size))
         self.biases = np.zeros(self.num_of_kernels,self.kernel_size,self.kernel_size)
@@ -174,7 +177,7 @@ class Conv2D:
                     curr_mod_kernel[curr_mod_kernel == ''] = str(0)
                     curr_mod_kernel = curr_mod_kernel.astype(float)
                     one_channel_output_image_1d = curr_mod_kernel @ tmp_img_1d
-                    one_channel_output_image = np.reshape(one_channel_output_image_1d, shape=(self.output_size,self.output_size))
+                    one_channel_output_image = np.reshape(one_channel_output_image_1d, shape=(self.output_size_1d,self.output_size_1d))
                     output_img = output_img + one_channel_output_image
                 output_img_total[:,:,k] = output_img.copy()
             self.output[img_num,:,:,:] = output_img_total.copy()
@@ -305,7 +308,12 @@ class BatchNormalization:
         self.isTrainable = True
         self.isTraining = True
     def Compile(self, input_size):
+        self.isConv = False
+        if len(input_size) == 3:
+            self.isConv = True
         self.size = input_size
+        if self.isConv:
+            self.size = input_size[-1]
         self.output_size = self.size #The same as size, just different names
         self.gammas = np.ones(shape=(self.size,))
         self.biases = np.zeros(shape=(self.size,))
@@ -323,8 +331,11 @@ class BatchNormalization:
         if self.isTraining:
 
             self.means = inputs.mean(axis=0) #(size)
+            if self.isConv:
+                self.means = inputs.mean(axis=(0,1,2)) #(size)
             self.vars = ((inputs - self.means)**2).mean(axis=0) #(size)
-        
+            if self.isConv:
+                self.means = ((inputs - self.means)**2).mean(axis=(0,1,2)) #(size)
             self.epsilon = 0.00001
             self.normalized_x = (inputs - self.means)/np.sqrt(self.vars + self.epsilon)
             self.outputs = self.gammas * self.normalized_x + self.biases
@@ -346,7 +357,7 @@ class BatchNormalization:
         self.delta = error_delta 
     def Backward(self):
 
-        self.gradient_error_normalized_x = self.delta * self.gammas #(batch_size, features) 
+        self.gradient_error_normalized_x = self.delta * self.gammas #(batch_size, features) for normal pass, (batch_size,x,x,channels) for conv pass
         self.grad_error_var = np.sum(self.gradient_error_normalized_x*(self.remInputs - self.means)*(-1/2)*np.float_power((self.vars + self.epsilon),-3/2),axis=0)
         self.grad_error_mean = np.sum(self.gradient_error_normalized_x*(-1/np.sqrt(self.vars+self.epsilon)),axis=0) + self.grad_error_var * (np.sum((-2)*(self.remInputs - self.means),axis=0)/self.batch_size)
         self.next_delta = self.gradient_error_normalized_x * (1/np.sqrt(self.vars + self.epsilon)) + self.grad_error_var * (2*(self.remInputs - self.means)/self.batch_size) + self.grad_error_mean * (1/self.batch_size)
@@ -411,6 +422,25 @@ class LeakyReLU_L:
         self.delta = error_delta 
     def Backward(self):
         next_delta = self.delta * LeakyReLUDer(self.remInputs, self.alpha)
+        return next_delta
+class Flatten:
+    def __init__(self):
+        self.isTrainable = False
+        self.batch_size = 0
+    def Compile(self, input_size):
+        self.size = input_size
+        self.output_size = self.batch_size,self.input_shape[0]*self.input_shape[1]*self.input_shape[2] #The same as size, just different names
+        self.input_shape = self.size
+        self.S = None
+    def Forward(self, inputs):
+        self.remInputs = inputs
+        self.outputs = np.reshape(inputs,(self.batch_size,self.input_shape[0]*self.input_shape[1]*self.input_shape[2]))
+        self.S = self.outputs
+        return self.outputs
+    def SetLastDelta_Backward(self, error_delta):
+        self.delta = error_delta 
+    def Backward(self):
+        next_delta = np.reshape(self.delta,(self.batch_size,self.input_shape[0],self.input_shape[1],self.input_shape[2]))
         return next_delta
 class Model:
     def __init__(self, input_size, layers, batch_size = 1):
