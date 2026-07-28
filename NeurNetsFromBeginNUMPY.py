@@ -54,7 +54,6 @@ class Dense:
     def Compile(self, input_size):
         #Dense layer only accepts 1 ranked tensors (input_size does not count batch_size)
         if not isinstance(input_size,int):
-            print(input_size)
             raise Exception('Wrong input size')
         self.input_size = input_size
         self.weights = np.random.randn(self.output_size,self.input_size)
@@ -126,10 +125,10 @@ class Conv2D:
         
     def Compile(self, input_shape):
         #Conv2D layer only accepts 3 ranked tensors (input_size does not count batch_size)
-        if len(input_shape) != 3:
+        if isinstance(input_shape,int):
             raise Exception("Wrong input shape for Dense!")
-        self.input_size = input_shape.shape[0]
-        self.channels = input_shape.shape[2]
+        self.input_size = input_shape[0]
+        self.channels = input_shape[2]
         self.output_size_1d = math.floor((self.input_size + 2*self.padding - self.kernel_size)/self.strides) + 1
         self.output_size = [self.output_size_1d,self.output_size_1d,self.num_of_kernels]
 
@@ -149,22 +148,20 @@ class Conv2D:
             for j in range(self.output_size_1d):
                 templ_small_kernel = np.full((self.input_size+2*self.padding,self.input_size+2*self.padding),'',dtype='U10')
                 templ_small_kernel[self.strides*i:self.kernel_size + self.strides*i,self.strides*j:self.kernel_size + self.strides*j] = templ_kernel
-                print(templ_small_kernel)
                 templ_small_kernel = templ_small_kernel.flatten()
                 self.templ_modified_kernel[i*self.output_size_1d+j,:] = templ_small_kernel
-
-        self.kernels = np.randn((self.num_of_kernels,self.channels,self.kernel_size,self.kernel_size))
-        self.biases = np.zeros(self.num_of_kernels,self.kernel_size,self.kernel_size)
+        self.kernels = np.random.randn(self.num_of_kernels,self.channels,self.kernel_size,self.kernel_size)
+        self.biases = np.zeros(shape=(self.num_of_kernels,self.kernel_size,self.kernel_size))
 
     def Forward(self, inputs):
         '''inputs->outputs'''
         self.remInputs = inputs
         self.batch_size = inputs.shape[0]
-        self.output = np.zeros(self.batch_size,self.kernel_size,self.kernel_size,self.num_of_kernels)
+        self.output = np.zeros(shape=(self.batch_size,self.output_size_1d,self.output_size_1d,self.num_of_kernels))
         for img_num in range(self.batch_size):
-            output_img_total = np.zeros(self.kernel_size,self.kernel_size,self.num_of_kernels) #The entire image with all new channels 
+            output_img_total = np.zeros(shape=(self.output_size_1d,self.output_size_1d,self.num_of_kernels)) #The entire image with all new channels 
             for k in range(self.num_of_kernels):
-                output_img = np.zeros(self.kernel_size,self.kernel_size) 
+                output_img = np.zeros(shape=(self.output_size_1d,self.output_size_1d)) 
                 for c in range(self.channels):
                     tmp_img_1d = inputs[img_num,:,:,c]
                     tmp_img_1d = tmp_img_1d.flatten()
@@ -312,9 +309,11 @@ class BatchNormalization:
         if not isinstance(input_size,int):
             self.isConv = True
         self.size = input_size
+        self.output_size = self.size
         if self.isConv:
             self.size = input_size[-1]
-        self.output_size = self.size #The same as size, just different names
+            self.output_size = input_size
+        
         self.gammas = np.ones(shape=(self.size,))
         self.biases = np.zeros(shape=(self.size,))
         self.iter = 0
@@ -461,8 +460,10 @@ class Model:
         for i in range(0, self.size):
             if i == 0:
                 self.layers[i].Compile(self.input_size)
+                print(self.input_size)
             else:
                 self.layers[i].Compile(self.layers[i-1].output_size)
+                print(self.layers[i-1].output_size)
         for i in range(0, self.size):
             if isinstance(self.layers[i], BatchNormalization):
                 self.layers[i].batch_size = self.batch_size

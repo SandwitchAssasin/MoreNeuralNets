@@ -126,7 +126,6 @@ if PROJECT_NUMBER == 2:
         dataline.append(train_images[t])
         dataline.append(train_labels[t])
         dataTrain.append(dataline)
-        print(t)
     test_labels = utils.turn_int_into_one_hot(test_labels)
     dataTest = []
     for t in range(len(test_labels)):
@@ -134,9 +133,8 @@ if PROJECT_NUMBER == 2:
         dataline.append(test_images[t])
         dataline.append(test_labels[t])
         dataTest.append(dataline)
-        print(t)
     print('aaa')
-
+    '''
     lf = NeurNFN.Flatten()
     l1_2 = NeurNFN.Dense(200,'linear')
     ld1 = NeurNFN.BatchNormalization()
@@ -148,8 +146,20 @@ if PROJECT_NUMBER == 2:
     ld3 = NeurNFN.BatchNormalization()
     ld3p = NeurNFN.LeakyReLU_L(0.1)
     l4_2 = NeurNFN.Dense(10,'softmax')
-
     lay = [lf,l1_2,ld1,ld1p,l2_2,ld2,ld2p,l3_2,ld3,ld3p,l4_2]
+    '''
+    l1_2 = NeurNFN.Conv2D(num_of_kernels=15,kernel_size=3,padding=0,strides=1)
+    ld1 = NeurNFN.BatchNormalization()
+    ld1p = NeurNFN.LeakyReLU_L(0.1)
+    l2_2 = NeurNFN.Conv2D(num_of_kernels=15,kernel_size=3,padding=0,strides=1)
+    ld2 = NeurNFN.BatchNormalization()
+    ld2p = NeurNFN.LeakyReLU_L(0.1)
+    l3_2 = NeurNFN.Conv2D(num_of_kernels=15,kernel_size=3,padding=0,strides=1)
+    ld3 = NeurNFN.BatchNormalization()
+    ld3p = NeurNFN.LeakyReLU_L(0.1)
+    lf = NeurNFN.Flatten()
+    l4_2 = NeurNFN.Dense(10,'softmax')
+    lay = [l1_2,ld1,ld1p,l2_2,ld2,ld2p,l3_2,ld3,ld3p,lf,l4_2]
 
     m2 = NeurNFN.Model((28,28,1), lay)
     m2.Train(dataTrain,epochs = 5, learning_rate = 0.002, batch_size=50)
